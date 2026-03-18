@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Force SQLite for tests
 os.environ["DATABASE_URL"] = "sqlite:///./test_btc_alpha.db"
-os.environ["COINGLASS_API_KEY"] = "test_key"
+os.environ["COINALYZE_API_KEY"] = "test_key"
 os.environ["LIVE_TRADING_ENABLED"] = "false"
 os.environ["PAPER_MODE"] = "true"
 

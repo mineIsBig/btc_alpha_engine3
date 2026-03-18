@@ -31,7 +31,7 @@ def main() -> None:
                 session.add(Instrument(
                     symbol=inst["symbol"],
                     exchange_symbol=inst.get("exchange_symbol"),
-                    coinglass_symbol=inst.get("coinglass_symbol"),
+                    coinalyze_symbol=inst.get("coinalyze_symbol"),
                     hyperliquid_symbol=inst.get("hyperliquid_symbol"),
                     tick_size=inst.get("tick_size", 0.1),
                     lot_size=inst.get("lot_size", 0.001),

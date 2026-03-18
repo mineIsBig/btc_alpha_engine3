@@ -1,4 +1,16 @@
-"""Data ingestion jobs: backfill and incremental refresh."""
+"""Data ingestion jobs: backfill and incremental refresh.
+
+Primary source: Coinalyze API.
+Fallback: Hyperliquid API (for price and funding data when Coinalyze is rate-limited).
+
+Hyperliquid fallback coverage:
+- Price OHLCV: full fallback via candleSnapshot
+- Funding rate: full fallback via fundingHistory
+- Open interest: NO historical fallback (current snapshot only)
+- Liquidations: NO fallback
+- Long/short ratio: NO fallback
+- Taker buy/sell: NO fallback
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -8,7 +20,8 @@ from sqlalchemy import select, func
 
 from src.common.logging import get_logger
 from src.common.time_utils import utc_now
-from src.data.coinglass_client import CoinGlassClient
+from src.data.coinalyze_client import CoinalyzeClient, CoinalyzeRateLimitError
+from src.data.hyperliquid_client import HyperliquidClient
 from src.data.validators import validate_ohlc, validate_ratio_data, validate_liquidation_data
 from src.data.resampler import align_to_hourly
 from src.storage.database import session_scope
@@ -41,8 +54,9 @@ def backfill_price_data(
     end: datetime | None = None,
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
-    """Backfill hourly price bars from CoinGlass OHLC."""
-    client = CoinGlassClient()
+    """Backfill hourly price bars. Primary: Coinalyze, Fallback: Hyperliquid candles."""
+    ca_client = CoinalyzeClient()
+    hl_client = HyperliquidClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -57,14 +71,22 @@ def backfill_price_data(
             chunk_end = min(current + timedelta(days=chunk_days), end)
             logger.info("backfill_price", start=current.isoformat(), end=chunk_end.isoformat())
 
-            # Use OI OHLC as a proxy for price if price endpoint unavailable,
-            # or funding OHLC for the funding-specific data.
-            # CoinGlass v3 doesn't have a dedicated price OHLC, so we use their
-            # candle data or fall back to Hyperliquid candles.
-            df = client.fetch_oi_ohlc(
-                symbol=symbol, exchange=exchange,
-                start_time=current, end_time=chunk_end, limit=500,
-            )
+            df = pd.DataFrame()
+            source = "coinalyze"
+
+            # Try Coinalyze first
+            try:
+                df = ca_client.fetch_oi_ohlc(
+                    symbol=symbol, exchange=exchange,
+                    start_time=current, end_time=chunk_end, limit=500,
+                )
+            except CoinalyzeRateLimitError:
+                logger.warning("coinalyze_rate_limited_fallback_hl", dataset="price")
+                df = hl_client.fetch_candles_df(
+                    symbol=symbol, interval="1h",
+                    start_time=current, end_time=chunk_end,
+                )
+                source = "hyperliquid"
 
             if df.empty:
                 logger.warning("no_price_data", start=current.isoformat())
@@ -84,19 +106,20 @@ def backfill_price_data(
                     "low": r["low"],
                     "close": r["close"],
                     "volume": r.get("volume", 0),
-                    "source": "coinglass",
+                    "source": source,
                 })
 
             with session_scope() as session:
                 n = _upsert_rows(session, PriceBar1h, rows, ["symbol", "timestamp"])
                 total_inserted += n
-                logger.info("price_inserted", count=n)
+                logger.info("price_inserted", count=n, source=source)
 
             current = chunk_end
 
         return total_inserted
     finally:
-        client.close()
+        ca_client.close()
+        hl_client.close()
 
 
 def backfill_funding(
@@ -105,8 +128,9 @@ def backfill_funding(
     end: datetime | None = None,
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
-    """Backfill funding rate OHLC data."""
-    client = CoinGlassClient()
+    """Backfill funding rate OHLC. Primary: Coinalyze, Fallback: Hyperliquid."""
+    ca_client = CoinalyzeClient()
+    hl_client = HyperliquidClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -117,8 +141,18 @@ def backfill_funding(
         current = start
         while current < end:
             chunk_end = min(current + timedelta(days=30), end)
-            df = client.fetch_funding_ohlc(symbol=symbol, exchange=exchange,
-                                           start_time=current, end_time=chunk_end)
+
+            df = pd.DataFrame()
+
+            try:
+                df = ca_client.fetch_funding_ohlc(symbol=symbol, exchange=exchange,
+                                                   start_time=current, end_time=chunk_end)
+            except CoinalyzeRateLimitError:
+                logger.warning("coinalyze_rate_limited_fallback_hl", dataset="funding")
+                df = hl_client.fetch_funding_history(
+                    symbol=symbol, start_time=current, end_time=chunk_end,
+                )
+
             df = validate_ohlc(df, source="funding_backfill")
             df = align_to_hourly(df)
 
@@ -135,7 +169,8 @@ def backfill_funding(
             current = chunk_end
         return total
     finally:
-        client.close()
+        ca_client.close()
+        hl_client.close()
 
 
 def backfill_oi(
@@ -144,8 +179,8 @@ def backfill_oi(
     end: datetime | None = None,
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
-    """Backfill OI OHLC data."""
-    client = CoinGlassClient()
+    """Backfill OI OHLC data. No Hyperliquid fallback for historical OI."""
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -156,8 +191,16 @@ def backfill_oi(
         current = start
         while current < end:
             chunk_end = min(current + timedelta(days=30), end)
-            df = client.fetch_oi_ohlc(symbol=symbol, exchange=exchange,
-                                      start_time=current, end_time=chunk_end)
+
+            try:
+                df = client.fetch_oi_ohlc(symbol=symbol, exchange=exchange,
+                                          start_time=current, end_time=chunk_end)
+            except CoinalyzeRateLimitError:
+                logger.warning("coinalyze_rate_limited_no_fallback", dataset="oi",
+                               msg="Hyperliquid does not provide historical OI")
+                current = chunk_end
+                continue
+
             df = validate_ohlc(df, source="oi_backfill")
             df = align_to_hourly(df)
 
@@ -182,8 +225,8 @@ def backfill_liquidations(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> int:
-    """Backfill liquidation data."""
-    client = CoinGlassClient()
+    """Backfill liquidation data. No Hyperliquid fallback."""
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -194,8 +237,16 @@ def backfill_liquidations(
         current = start
         while current < end:
             chunk_end = min(current + timedelta(days=30), end)
-            df = client.fetch_liquidation_history(symbol=symbol,
-                                                  start_time=current, end_time=chunk_end)
+
+            try:
+                df = client.fetch_liquidation_history(symbol=symbol,
+                                                      start_time=current, end_time=chunk_end)
+            except CoinalyzeRateLimitError:
+                logger.warning("coinalyze_rate_limited_no_fallback", dataset="liquidations",
+                               msg="Hyperliquid does not provide liquidation history")
+                current = chunk_end
+                continue
+
             df = validate_liquidation_data(df, source="liq_backfill")
             df = align_to_hourly(df)
 
@@ -223,8 +274,8 @@ def backfill_long_short(
     end: datetime | None = None,
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
-    """Backfill long/short ratio data."""
-    client = CoinGlassClient()
+    """Backfill long/short ratio data. No Hyperliquid fallback."""
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -235,8 +286,16 @@ def backfill_long_short(
         current = start
         while current < end:
             chunk_end = min(current + timedelta(days=30), end)
-            df = client.fetch_long_short_ratio(symbol=symbol, exchange=exchange,
-                                               start_time=current, end_time=chunk_end)
+
+            try:
+                df = client.fetch_long_short_ratio(symbol=symbol, exchange=exchange,
+                                                   start_time=current, end_time=chunk_end)
+            except CoinalyzeRateLimitError:
+                logger.warning("coinalyze_rate_limited_no_fallback", dataset="long_short",
+                               msg="Hyperliquid does not provide long/short ratio")
+                current = chunk_end
+                continue
+
             df = validate_ratio_data(df, source="ls_backfill")
             df = align_to_hourly(df)
 
@@ -262,8 +321,8 @@ def backfill_taker_flow(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> int:
-    """Backfill taker buy/sell data."""
-    client = CoinGlassClient()
+    """Backfill taker buy/sell data. No Hyperliquid fallback."""
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -274,8 +333,16 @@ def backfill_taker_flow(
         current = start
         while current < end:
             chunk_end = min(current + timedelta(days=30), end)
-            df = client.fetch_taker_buy_sell(symbol=symbol,
-                                             start_time=current, end_time=chunk_end)
+
+            try:
+                df = client.fetch_taker_buy_sell(symbol=symbol,
+                                                 start_time=current, end_time=chunk_end)
+            except CoinalyzeRateLimitError:
+                logger.warning("coinalyze_rate_limited_no_fallback", dataset="taker_flow",
+                               msg="Hyperliquid does not provide taker buy/sell volume")
+                current = chunk_end
+                continue
+
             df = validate_ratio_data(df, source="taker_backfill")
             df = align_to_hourly(df)
 

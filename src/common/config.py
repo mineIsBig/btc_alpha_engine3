@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(default="sqlite:///./btc_alpha.db")
 
-    # CoinGlass
-    coinglass_api_key: str = Field(default="")
+    # Coinalyze
+    coinalyze_api_key: str = Field(default="")
 
     # Hyperliquid
     hyperliquid_api_key: str = Field(default="")

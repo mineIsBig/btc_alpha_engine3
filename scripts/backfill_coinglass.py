@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill historical data from CoinGlass."""
+"""Backfill historical data from Coinalyze (formerly CoinGlass)."""
 import sys
 sys.path.insert(0, ".")
 

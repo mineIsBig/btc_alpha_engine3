@@ -2,7 +2,7 @@
 instruments:
   - symbol: BTC
     exchange_symbol: BTC
-    coinglass_symbol: BTC
+    coinalyze_symbol: BTCUSDT_PERP.A
     hyperliquid_symbol: BTC
     tick_size: 0.1
     lot_size: 0.001

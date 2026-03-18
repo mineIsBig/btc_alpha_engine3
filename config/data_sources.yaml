@@ -1,17 +1,32 @@
 # data_sources.yaml
-coinglass:
-  base_url: "https://open-api-v3.coinglass.com/api"
-  rate_limit_per_minute: 30
+
+# NOTE: CoinGlass integration has been replaced by Coinalyze.
+# coinglass:
+#   base_url: "https://open-api-v3.coinglass.com/api"
+#   rate_limit_per_minute: 30
+#   retry_max: 3
+#   retry_backoff: 2.0
+#   endpoints:
+#     funding_rate_ohlc: "/futures/funding-rates-ohlc-history"
+#     oi_ohlc: "/futures/openInterest/ohlc-history"
+#     liquidation_history: "/futures/liquidation/v2/history"
+#     long_short_ratio: "/futures/globalLongShortAccountRatio/history"
+#     taker_buy_sell: "/futures/taker-buy-sell/history"
+#   default_exchange: Binance
+#   default_interval: h1
+
+coinalyze:
+  base_url: "https://api.coinalyze.net/v1"
+  rate_limit_per_minute: 40
   retry_max: 3
   retry_backoff: 2.0
   endpoints:
-    funding_rate_ohlc: "/futures/funding-rates-ohlc-history"
-    oi_ohlc: "/futures/openInterest/ohlc-history"
-    liquidation_history: "/futures/liquidation/v2/history"
-    long_short_ratio: "/futures/globalLongShortAccountRatio/history"
-    taker_buy_sell: "/futures/taker-buy-sell/history"
-  default_exchange: Binance
-  default_interval: h1
+    funding_rate_history: "/funding-rate-history"
+    oi_history: "/open-interest-history"
+    liquidation_history: "/liquidation-history"
+    long_short_ratio_history: "/long-short-ratio-history"
+    ohlcv_history: "/ohlcv-history"
+  default_interval: 1hour
 
 hyperliquid:
   mainnet_url: "https://api.hyperliquid.xyz"
@@ -22,7 +37,7 @@ hyperliquid:
   ws_testnet_url: "wss://api.hyperliquid-testnet.xyz/ws"
 
 price:
-  # Use CoinGlass or Hyperliquid candles as price source
-  primary_source: coinglass
+  # Use Coinalyze or Hyperliquid candles as price source
+  primary_source: coinalyze
   fallback_source: hyperliquid
   interval: 1h
