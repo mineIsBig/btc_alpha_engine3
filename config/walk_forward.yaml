@@ -2,11 +2,15 @@
 walk_forward:
   train_days: 90
   test_days: 14
-  purge_hours: 48       # gap between train end and test start
+  purge_hours: 48       # base gap between train end and test start
   embargo_hours: 24     # gap after test end before next train start
   min_train_samples: 1000
   step_days: 14         # roll forward by this many days each fold
   max_folds: 50
+  # Dynamic purge: purge_hours is the floor. When a label horizon is
+  # specified, effective purge = max(purge_hours, horizon * purge_horizon_multiplier).
+  # This prevents forward-looking label leakage for longer horizons.
+  purge_horizon_multiplier: 3.0   # purge = 3x label horizon (e.g. 72h for 24h labels)
 
 scoring:
   primary_metric: sharpe_ratio
@@ -17,12 +21,22 @@ scoring:
     - profit_factor
     - max_drawdown
     - calmar_ratio
+    - avg_slippage_bps
   min_trades_per_fold: 10
 
 costs:
-  slippage_bps: 5.0        # 5 bps one-way slippage
+  slippage_bps: 5.0        # 5 bps one-way baseline slippage (calm markets)
   commission_bps: 2.0      # 2 bps one-way commission
   funding_rate_avg_bps: 1.0  # average hourly funding cost
+  # Regime-dependent slippage settings
+  regime_slippage:
+    enabled: true
+    baseline_volatility: 0.002    # "normal" hourly vol (~0.2%)
+    max_slippage_multiplier: 5.0  # cap at 5x baseline (25 bps)
+    min_slippage_multiplier: 0.8  # floor at 0.8x baseline (4 bps)
+    volatility_lookback_hours: 24 # rolling window for vol calc
+    liquidation_scaling_bps_per_1m: 0.5  # additional bps per $1M liquidations
+    liquidation_cap_bps: 10.0     # max additional bps from liquidations
 
 simulation:
   initial_equity: 100000.0

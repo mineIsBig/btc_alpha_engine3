@@ -56,10 +56,12 @@ calibration:
   enabled: true
 
 promotion:
-  min_oos_sharpe: 0.5
+  min_oos_sharpe: 0.5             # base threshold (adjusted for multiple comparisons)
   min_oos_accuracy: 0.52
   max_breach_rate: 0.0
   min_folds: 3
+  min_consecutive_windows: 3      # must pass on 3 consecutive walk-forward windows
+  apply_multiple_comparisons: true  # Bonferroni-style Sharpe inflation
 
 evolutionary_search:
   enabled: true
