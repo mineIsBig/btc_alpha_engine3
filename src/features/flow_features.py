@@ -1,4 +1,5 @@
 """Flow features: long/short ratios, taker buy/sell, top trader ratios."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -27,8 +28,12 @@ def compute_flow_features(df: pd.DataFrame) -> pd.DataFrame:
         sigma = ls_ratio.rolling(w).std().replace(0, np.nan)
         out[f"ls_zscore_{w}h"] = (ls_ratio - mu) / sigma
 
-    out["ls_extreme_long"] = (ls_ratio > ls_ratio.rolling(168).quantile(0.95)).astype(float)
-    out["ls_extreme_short"] = (ls_ratio < ls_ratio.rolling(168).quantile(0.05)).astype(float)
+    out["ls_extreme_long"] = (ls_ratio > ls_ratio.rolling(168).quantile(0.95)).astype(
+        float
+    )
+    out["ls_extreme_short"] = (ls_ratio < ls_ratio.rolling(168).quantile(0.05)).astype(
+        float
+    )
 
     # ── Taker Buy/Sell Features ──────────────────────────────
     buy_vol = df.get("buy_volume", pd.Series(0.0, index=df.index)).astype(float)
@@ -55,6 +60,8 @@ def compute_flow_features(df: pd.DataFrame) -> pd.DataFrame:
     # ── Divergence: taker flow vs price ──────────────────────
     if "close" in df.columns:
         price_ret = df["close"].astype(float).pct_change(4)
-        out["taker_price_divergence_4h"] = out["taker_net_flow"].rolling(4).mean() - price_ret.clip(-1, 1)
+        out["taker_price_divergence_4h"] = out["taker_net_flow"].rolling(
+            4
+        ).mean() - price_ret.clip(-1, 1)
 
     return out

@@ -1,9 +1,9 @@
 """Dataset preparation for research: feature + label alignment, train/test splits."""
+
 from __future__ import annotations
 
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 from src.common.logging import get_logger
@@ -52,9 +52,17 @@ def prepare_dataset(
             logger.warning("no_price_data_for_labels")
             return features_df
 
-        price_df = pd.DataFrame([{
-            "timestamp": r.timestamp, "close": r.close, "high": r.high, "low": r.low,
-        } for r in rows])
+        price_df = pd.DataFrame(
+            [
+                {
+                    "timestamp": r.timestamp,
+                    "close": r.close,
+                    "high": r.high,
+                    "low": r.low,
+                }
+                for r in rows
+            ]
+        )
 
     price_df["timestamp"] = pd.to_datetime(price_df["timestamp"], utc=True)
     labels_df = build_labels(price_df, horizons=horizons)
@@ -65,12 +73,23 @@ def prepare_dataset(
     dataset = features_df.merge(labels_df, on="timestamp", how="inner")
 
     # Drop rows with all-NaN features
-    feat_cols = [c for c in dataset.columns if c not in ["timestamp", "regime_label"]
-                 and not c.startswith("fwd_ret_") and not c.startswith("label_")
-                 and not c.startswith("mfe_") and not c.startswith("mae_")]
+    feat_cols = [
+        c
+        for c in dataset.columns
+        if c not in ["timestamp", "regime_label"]
+        and not c.startswith("fwd_ret_")
+        and not c.startswith("label_")
+        and not c.startswith("mfe_")
+        and not c.startswith("mae_")
+    ]
     dataset = dataset.dropna(subset=feat_cols, how="all")
 
-    logger.info("dataset_prepared", rows=len(dataset), features=len(feat_cols), horizons=horizons)
+    logger.info(
+        "dataset_prepared",
+        rows=len(dataset),
+        features=len(feat_cols),
+        horizons=horizons,
+    )
     return dataset
 
 
@@ -79,8 +98,11 @@ def get_feature_columns(dataset: pd.DataFrame) -> list[str]:
     skip_prefixes = ("fwd_ret_", "label_", "mfe_", "mae_", "barrier_")
     skip_exact = {"timestamp", "regime_label", "symbol", "id"}
 
-    return [c for c in dataset.columns
-            if c not in skip_exact and not any(c.startswith(p) for p in skip_prefixes)]
+    return [
+        c
+        for c in dataset.columns
+        if c not in skip_exact and not any(c.startswith(p) for p in skip_prefixes)
+    ]
 
 
 def get_label_column(horizon: int) -> str:

@@ -17,6 +17,7 @@ Metrics exported:
 - equity: gauge of current equity
 - risk_headroom: gauge of headroom to breach
 """
+
 from __future__ import annotations
 
 import threading
@@ -30,10 +31,13 @@ logger = get_logger(__name__)
 # Try to use prometheus_client, fall back to manual exposition
 try:
     from prometheus_client import (
-        Counter, Gauge, Histogram, Summary,
-        generate_latest, CONTENT_TYPE_LATEST,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
         start_http_server,
     )
+
     _HAS_PROM_CLIENT = True
 except ImportError:
     _HAS_PROM_CLIENT = False
@@ -51,15 +55,26 @@ class MetricsCollector:
                 "agent_iteration_total", "Total agent iterations"
             )
             self.iteration_duration = Histogram(
-                "agent_iteration_duration_seconds", "Duration of agent iterations",
+                "agent_iteration_duration_seconds",
+                "Duration of agent iterations",
                 buckets=[1, 5, 10, 30, 60, 120, 300, 600],
             )
-            self.sharpe_gauge = Gauge("system_sharpe_ratio", "Rolling system Sharpe ratio")
+            self.sharpe_gauge = Gauge(
+                "system_sharpe_ratio", "Rolling system Sharpe ratio"
+            )
             self.drawdown_gauge = Gauge("system_max_drawdown", "Maximum drawdown")
-            self.signal_direction = Gauge("signal_direction", "Latest signal direction (-1/0/1)")
-            self.signal_confidence = Gauge("signal_confidence", "Latest signal confidence")
-            self.signal_size_usd = Gauge("signal_position_size_usd", "Recommended position size USD")
-            self.signal_expected_ret = Gauge("signal_expected_return_pct", "Expected return %")
+            self.signal_direction = Gauge(
+                "signal_direction", "Latest signal direction (-1/0/1)"
+            )
+            self.signal_confidence = Gauge(
+                "signal_confidence", "Latest signal confidence"
+            )
+            self.signal_size_usd = Gauge(
+                "signal_position_size_usd", "Recommended position size USD"
+            )
+            self.signal_expected_ret = Gauge(
+                "signal_expected_return_pct", "Expected return %"
+            )
             self.signal_entry_price = Gauge("signal_entry_price", "Signal entry price")
             self.signal_tp = Gauge("signal_take_profit", "Take profit level")
             self.signal_sl = Gauge("signal_stop_loss", "Stop loss level")
@@ -67,8 +82,12 @@ class MetricsCollector:
             self.error_counter = Counter("error_total", "Total errors")
             self.equity_gauge = Gauge("equity_usd", "Current account equity")
             self.risk_headroom = Gauge("risk_headroom", "Headroom to risk breach")
-            self.signal_rr_ratio = Gauge("signal_risk_reward_ratio", "Risk/reward ratio")
-            self.agent_iteration_id = Gauge("agent_iteration_id", "Current iteration number")
+            self.signal_rr_ratio = Gauge(
+                "signal_risk_reward_ratio", "Risk/reward ratio"
+            )
+            self.agent_iteration_id = Gauge(
+                "agent_iteration_id", "Current iteration number"
+            )
         else:
             # Minimal fallback: store values in dict for manual exposition
             self._metrics: dict[str, float] = {}
@@ -95,7 +114,11 @@ class MetricsCollector:
     def record_signal(self, signal: Any) -> None:
         """Record a signal output to metrics."""
         if _HAS_PROM_CLIENT:
-            direction_val = 1 if signal.direction == "long" else -1 if signal.direction == "short" else 0
+            direction_val = (
+                1
+                if signal.direction == "long"
+                else -1 if signal.direction == "short" else 0
+            )
             self.signal_direction.set(direction_val)
             self.signal_confidence.set(signal.confidence)
             self.signal_size_usd.set(signal.position_size_usd)
@@ -105,12 +128,18 @@ class MetricsCollector:
             self.signal_sl.set(signal.stop_loss)
             self.signal_rr_ratio.set(signal.risk_reward_ratio)
         else:
-            self._metrics["signal_direction"] = 1 if signal.direction == "long" else -1 if signal.direction == "short" else 0
+            self._metrics["signal_direction"] = (
+                1
+                if signal.direction == "long"
+                else -1 if signal.direction == "short" else 0
+            )
             self._metrics["signal_confidence"] = signal.confidence
             self._metrics["signal_position_size_usd"] = signal.position_size_usd
             self._metrics["signal_expected_return_pct"] = signal.expected_return_pct
 
-    def record_iteration(self, iteration: int, duration: float, sharpe: float, drawdown: float) -> None:
+    def record_iteration(
+        self, iteration: int, duration: float, sharpe: float, drawdown: float
+    ) -> None:
         """Record iteration metrics."""
         if _HAS_PROM_CLIENT:
             self.iteration_counter.inc()
@@ -162,6 +191,7 @@ class MetricsCollector:
 
 class _MinimalMetricsHandler(BaseHTTPRequestHandler):
     """Minimal HTTP handler for metrics endpoint."""
+
     collector: MetricsCollector | None = None
 
     def do_GET(self):

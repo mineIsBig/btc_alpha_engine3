@@ -1,12 +1,21 @@
 """Tests for the signal scorecard — verifies the closed feedback loop."""
-import pytest
+
 from datetime import datetime, timedelta, timezone
 
 
 class TestSignalScorecard:
-    def _make_signal(self, direction="long", entry=65000, tp=66300, sl=64350,
-                     hours=8, confidence=0.7, iteration=1):
+    def _make_signal(
+        self,
+        direction="long",
+        entry=65000,
+        tp=66300,
+        sl=64350,
+        hours=8,
+        confidence=0.7,
+        iteration=1,
+    ):
         from src.agent.signal_output import SignalOutput
+
         return SignalOutput(
             timestamp=datetime.now(timezone.utc),
             direction=direction,
@@ -23,6 +32,7 @@ class TestSignalScorecard:
     def test_record_and_score_tp_hit(self):
         """Signal should score as WON when price hits take profit."""
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
@@ -41,6 +51,7 @@ class TestSignalScorecard:
     def test_record_and_score_sl_hit(self):
         """Signal should score as LOST when price hits stop loss."""
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
@@ -57,6 +68,7 @@ class TestSignalScorecard:
     def test_short_tp_hit(self):
         """Short signal should win when price drops to TP."""
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
@@ -71,17 +83,22 @@ class TestSignalScorecard:
 
     def test_expiry_scoring(self):
         """Signal should expire after holding period and score by mark-to-market."""
-        from src.agent.scorecard import SignalScorecard, TrackedSignal
+        from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
 
         # Create a signal that was issued 10 hours ago with 8h holding period
-        sig = self._make_signal(direction="long", entry=65000, tp=66300, sl=64350, hours=8)
+        sig = self._make_signal(
+            direction="long", entry=65000, tp=66300, sl=64350, hours=8
+        )
         sc.record_signal(sig)
 
         # Backdate the signal timestamp
-        sc.open_signals[0].timestamp = (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat()
+        sc.open_signals[0].timestamp = (
+            datetime.now(timezone.utc) - timedelta(hours=10)
+        ).isoformat()
 
         # Price is modestly up but didn't hit TP or SL
         closed = sc.score_signals(65500.0)
@@ -93,16 +110,22 @@ class TestSignalScorecard:
         """Flat signals should not be recorded."""
         from src.agent.scorecard import SignalScorecard
         from src.agent.signal_output import SignalOutput
+
         sc = SignalScorecard()
         sc.open_signals = []
 
-        sig = SignalOutput(timestamp=datetime.now(timezone.utc), direction="flat", reasoning="no consensus")
+        sig = SignalOutput(
+            timestamp=datetime.now(timezone.utc),
+            direction="flat",
+            reasoning="no consensus",
+        )
         sc.record_signal(sig)
         assert len(sc.open_signals) == 0
 
     def test_equity_curve_updates(self):
         """Equity curve should update after scoring."""
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
@@ -118,6 +141,7 @@ class TestSignalScorecard:
     def test_compute_metrics_with_enough_data(self):
         """Metrics should compute correctly with sufficient scored signals."""
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
@@ -125,7 +149,9 @@ class TestSignalScorecard:
 
         # Generate 10 signals, alternate wins and losses
         for i in range(10):
-            sig = self._make_signal(direction="long", entry=65000, tp=66300, sl=64350, iteration=i)
+            sig = self._make_signal(
+                direction="long", entry=65000, tp=66300, sl=64350, iteration=i
+            )
             sc.record_signal(sig)
             if i % 3 == 0:
                 sc.score_signals(64000.0)  # SL hit (loss)
@@ -142,6 +168,7 @@ class TestSignalScorecard:
 
     def test_is_profitable_with_insufficient_data(self):
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
@@ -153,11 +180,14 @@ class TestSignalScorecard:
     def test_peak_favorable_adverse_tracking(self):
         """MFE/MAE should be tracked during signal lifetime."""
         from src.agent.scorecard import SignalScorecard
+
         sc = SignalScorecard()
         sc.open_signals = []
         sc.closed_signals = []
 
-        sig = self._make_signal(direction="long", entry=65000, tp=67000, sl=63000, hours=24)
+        sig = self._make_signal(
+            direction="long", entry=65000, tp=67000, sl=63000, hours=24
+        )
         sc.record_signal(sig)
 
         # Price goes up first

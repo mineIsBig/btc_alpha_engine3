@@ -9,6 +9,7 @@ This module scales slippage dynamically based on:
 During calm markets, slippage stays near the baseline. During stress,
 it can scale up to 5x the baseline to reflect real-world spread widening.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -20,10 +21,10 @@ logger = get_logger(__name__)
 
 # Regime slippage configuration
 BASELINE_SLIPPAGE_BPS = 5.0
-BASELINE_VOLATILITY = 0.002       # ~0.2% hourly vol = "normal" BTC
-MAX_SLIPPAGE_MULTIPLIER = 5.0     # cap at 5x baseline (25 bps)
-MIN_SLIPPAGE_MULTIPLIER = 0.8     # floor at 0.8x baseline (4 bps)
-VOLATILITY_LOOKBACK = 24          # hours for rolling vol calculation
+BASELINE_VOLATILITY = 0.002  # ~0.2% hourly vol = "normal" BTC
+MAX_SLIPPAGE_MULTIPLIER = 5.0  # cap at 5x baseline (25 bps)
+MIN_SLIPPAGE_MULTIPLIER = 0.8  # floor at 0.8x baseline (4 bps)
+VOLATILITY_LOOKBACK = 24  # hours for rolling vol calculation
 LIQUIDATION_SCALING_FACTOR = 0.5  # additional bps per 1M USD liquidation volume
 
 
@@ -124,7 +125,7 @@ def compute_regime_costs(
     effective_slippage = base_slippage_bps * vol_mult + liq_adder
     # Commission scales with sqrt of vol multiplier (dampened)
     # e.g. 3x vol → commission *= 1.73, not 3.0
-    commission_mult = max(1.0, vol_mult ** 0.5)
+    commission_mult = max(1.0, vol_mult**0.5)
     effective_commission = base_commission_bps * commission_mult
 
     breakdown = {

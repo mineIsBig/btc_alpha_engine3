@@ -1,4 +1,5 @@
 """Liquidation-derived features."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,8 +13,12 @@ def compute_liquidation_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = pd.DataFrame(index=df.index)
 
-    long_liq = df.get("long_liquidations_usd", pd.Series(0.0, index=df.index)).astype(float)
-    short_liq = df.get("short_liquidations_usd", pd.Series(0.0, index=df.index)).astype(float)
+    long_liq = df.get("long_liquidations_usd", pd.Series(0.0, index=df.index)).astype(
+        float
+    )
+    short_liq = df.get("short_liquidations_usd", pd.Series(0.0, index=df.index)).astype(
+        float
+    )
     total_liq = df.get("total_liquidations_usd", long_liq + short_liq).astype(float)
 
     # ── Imbalance ────────────────────────────────────────────
@@ -39,9 +44,13 @@ def compute_liquidation_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Cascade: sustained high liquidation ──────────────────
     shock_24 = out["liq_shock_zscore_24h"]
-    out["liq_cascade_flag"] = (shock_24 > 2.0).rolling(3).sum()  # 3+ hours of elevated liqs
+    out["liq_cascade_flag"] = (
+        (shock_24 > 2.0).rolling(3).sum()
+    )  # 3+ hours of elevated liqs
 
     # ── Liquidation momentum ─────────────────────────────────
-    out["liq_momentum_4h"] = total_liq.rolling(4).sum() / total_liq.rolling(24).sum().replace(0, np.nan)
+    out["liq_momentum_4h"] = total_liq.rolling(4).sum() / total_liq.rolling(
+        24
+    ).sum().replace(0, np.nan)
 
     return out

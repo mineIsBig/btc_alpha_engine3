@@ -13,6 +13,7 @@ NOTE: Coinalyze uses unix timestamps in seconds (not milliseconds).
       Symbols use exchange-specific format, e.g. "BTCUSDT_PERP.A" for Binance.
       Intraday data retention is limited to 1500-2000 datapoints.
 """
+
 from __future__ import annotations
 
 import time
@@ -21,7 +22,12 @@ from typing import Any
 
 import httpx
 import pandas as pd
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from src.common.config import get_settings, load_yaml_config
 from src.common.logging import get_logger
@@ -52,11 +58,13 @@ INTERVAL_MAP = {
 
 class CoinalyzeAPIError(Exception):
     """Raised on non-success Coinalyze API responses."""
+
     pass
 
 
 class CoinalyzeRateLimitError(CoinalyzeAPIError):
     """Raised when rate limited (HTTP 429)."""
+
     pass
 
 
@@ -105,7 +113,9 @@ class CoinalyzeClient:
         wait=wait_exponential(multiplier=2, min=1, max=30),
         retry=retry_if_exception_type((httpx.HTTPStatusError, CoinalyzeRateLimitError)),
     )
-    def _get(self, endpoint: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def _get(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Make a GET request with retry and rate limiting.
 
         Coinalyze returns a JSON array directly (not wrapped in a 'data' field).
@@ -118,7 +128,11 @@ class CoinalyzeClient:
         if params:
             all_params.update(params)
 
-        logger.debug("coinalyze_request", url=url, params={k: v for k, v in all_params.items() if k != "api_key"})
+        logger.debug(
+            "coinalyze_request",
+            url=url,
+            params={k: v for k, v in all_params.items() if k != "api_key"},
+        )
 
         resp = self._client.get(url, params=all_params)
 
@@ -281,13 +295,15 @@ class CoinalyzeClient:
         for symbol_block in data:
             history = symbol_block.get("history", [])
             for item in history:
-                rows.append({
-                    "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
-                    "open": float(item.get("o", 0)),
-                    "high": float(item.get("h", 0)),
-                    "low": float(item.get("l", 0)),
-                    "close": float(item.get("c", 0)),
-                })
+                rows.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
+                        "open": float(item.get("o", 0)),
+                        "high": float(item.get("h", 0)),
+                        "low": float(item.get("l", 0)),
+                        "close": float(item.get("c", 0)),
+                    }
+                )
 
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -301,10 +317,15 @@ class CoinalyzeClient:
         Response format: [{"symbol": "...", "history": [{"t": ts, "l": long_liq, "s": short_liq}, ...]}]
         """
         if not data:
-            return pd.DataFrame(columns=[
-                "timestamp", "long_liquidations_usd", "short_liquidations_usd",
-                "total_liquidations_usd", "count"
-            ])
+            return pd.DataFrame(
+                columns=[
+                    "timestamp",
+                    "long_liquidations_usd",
+                    "short_liquidations_usd",
+                    "total_liquidations_usd",
+                    "count",
+                ]
+            )
 
         rows = []
         for symbol_block in data:
@@ -312,13 +333,15 @@ class CoinalyzeClient:
             for item in history:
                 long_liq = float(item.get("l", 0))
                 short_liq = float(item.get("s", 0))
-                rows.append({
-                    "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
-                    "long_liquidations_usd": long_liq,
-                    "short_liquidations_usd": short_liq,
-                    "total_liquidations_usd": long_liq + short_liq,
-                    "count": 0,  # Coinalyze doesn't provide count; default to 0
-                })
+                rows.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
+                        "long_liquidations_usd": long_liq,
+                        "short_liquidations_usd": short_liq,
+                        "total_liquidations_usd": long_liq + short_liq,
+                        "count": 0,  # Coinalyze doesn't provide count; default to 0
+                    }
+                )
 
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -332,7 +355,9 @@ class CoinalyzeClient:
         Response format: [{"symbol": "...", "history": [{"t": ts, "r": ratio, "l": long%, "s": short%}, ...]}]
         """
         if not data:
-            return pd.DataFrame(columns=["timestamp", "long_ratio", "short_ratio", "long_short_ratio"])
+            return pd.DataFrame(
+                columns=["timestamp", "long_ratio", "short_ratio", "long_short_ratio"]
+            )
 
         rows = []
         for symbol_block in data:
@@ -340,13 +365,17 @@ class CoinalyzeClient:
             for item in history:
                 long_pct = float(item.get("l", 0.5))
                 short_pct = float(item.get("s", 0.5))
-                ratio = float(item.get("r", long_pct / short_pct if short_pct > 0 else 1.0))
-                rows.append({
-                    "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
-                    "long_ratio": long_pct,
-                    "short_ratio": short_pct,
-                    "long_short_ratio": ratio,
-                })
+                ratio = float(
+                    item.get("r", long_pct / short_pct if short_pct > 0 else 1.0)
+                )
+                rows.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
+                        "long_ratio": long_pct,
+                        "short_ratio": short_pct,
+                        "long_short_ratio": ratio,
+                    }
+                )
 
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -361,7 +390,9 @@ class CoinalyzeClient:
         Sell volume = v - bv.
         """
         if not data:
-            return pd.DataFrame(columns=["timestamp", "buy_volume", "sell_volume", "buy_sell_ratio"])
+            return pd.DataFrame(
+                columns=["timestamp", "buy_volume", "sell_volume", "buy_sell_ratio"]
+            )
 
         rows = []
         for symbol_block in data:
@@ -371,12 +402,14 @@ class CoinalyzeClient:
                 buy_vol = float(item.get("bv", 0))
                 sell_vol = total_vol - buy_vol
                 ratio = buy_vol / sell_vol if sell_vol > 0 else 1.0
-                rows.append({
-                    "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
-                    "buy_volume": buy_vol,
-                    "sell_volume": sell_vol,
-                    "buy_sell_ratio": ratio,
-                })
+                rows.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(item["t"], tz=timezone.utc),
+                        "buy_volume": buy_vol,
+                        "sell_volume": sell_vol,
+                        "buy_sell_ratio": ratio,
+                    }
+                )
 
         df = pd.DataFrame(rows)
         if not df.empty:

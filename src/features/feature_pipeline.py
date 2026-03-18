@@ -4,27 +4,33 @@ Supports dynamic feature evolution via EvolutionConfig:
 - Features can be disabled by the agent (feature_toggles)
 - Custom interaction features can be added at runtime (custom_interactions)
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import select
 
 from src.common.logging import get_logger
-from src.data.resampler import merge_dataframes_on_timestamp, fill_hourly_gaps
 from src.features.price_features import compute_price_features
 from src.features.funding_features import compute_funding_features
 from src.features.oi_features import compute_oi_features
 from src.features.liquidation_features import compute_liquidation_features
 from src.features.flow_features import compute_flow_features
 from src.features.regime_features import compute_regime_features
+from src.features.temporal_interaction_features import (
+    compute_temporal_interaction_features,
+)
 from src.storage.database import get_session
 from src.storage.models import (
-    PriceBar1h, CGFunding1h, CGOI1h, CGLiquidations1h,
-    CGLongShort1h, CGTakerFlow1h,
+    PriceBar1h,
+    CGFunding1h,
+    CGOI1h,
+    CGLiquidations1h,
+    CGLongShort1h,
+    CGTakerFlow1h,
 )
 
 logger = get_logger(__name__)
@@ -39,16 +45,24 @@ def _apply_evolution_config(result: pd.DataFrame) -> pd.DataFrame:
     """
     try:
         from src.agent.evolution_config import load_evolution_config
+
         config = load_evolution_config()
     except Exception:
         return result  # no config = no changes
 
     # 1. Disable toggled-off features
-    disabled = [name for name, toggle in config.feature_toggles.items()
-                if not toggle.enabled and name in result.columns]
+    disabled = [
+        name
+        for name, toggle in config.feature_toggles.items()
+        if not toggle.enabled and name in result.columns
+    ]
     if disabled:
         result = result.drop(columns=disabled)
-        logger.info("features_disabled_by_evolution", count=len(disabled), features=disabled[:10])
+        logger.info(
+            "features_disabled_by_evolution",
+            count=len(disabled),
+            features=disabled[:10],
+        )
 
     # 2. Add custom interaction features
     ops = {
@@ -80,7 +94,7 @@ def load_raw_data(
     """Load all raw data from database into DataFrames."""
     session = get_session()
 
-    def _query_to_df(model, extra_filters=None):
+    def _query_to_df(model: Any, extra_filters: list | None = None) -> pd.DataFrame:  # type: ignore[type-arg]
         q = session.query(model).filter(model.symbol == symbol)
         if start:
             q = q.filter(model.timestamp >= start)
@@ -93,7 +107,9 @@ def load_raw_data(
         rows = q.all()
         if not rows:
             return pd.DataFrame()
-        data = [{c.name: getattr(r, c.name) for c in model.__table__.columns} for r in rows]
+        data = [
+            {c.name: getattr(r, c.name) for c in model.__table__.columns} for r in rows
+        ]
         return pd.DataFrame(data)
 
     dfs = {
@@ -144,7 +160,9 @@ def build_features(
         if not df.empty:
             df = df.copy()
             df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-            cols_to_keep = ["timestamp"] + [c for c in rename_map.keys() if c in df.columns]
+            cols_to_keep = ["timestamp"] + [
+                c for c in rename_map.keys() if c in df.columns
+            ]
             df = df[cols_to_keep].drop_duplicates(subset=["timestamp"], keep="last")
             df = df.rename(columns=rename_map)
             base = base.merge(df, on="timestamp", how="left")
@@ -154,7 +172,12 @@ def build_features(
     if not liq_df.empty:
         liq_df = liq_df.copy()
         liq_df["timestamp"] = pd.to_datetime(liq_df["timestamp"], utc=True)
-        liq_cols = ["timestamp", "long_liquidations_usd", "short_liquidations_usd", "total_liquidations_usd"]
+        liq_cols = [
+            "timestamp",
+            "long_liquidations_usd",
+            "short_liquidations_usd",
+            "total_liquidations_usd",
+        ]
         liq_cols = [c for c in liq_cols if c in liq_df.columns]
         liq_df = liq_df[liq_cols].drop_duplicates(subset=["timestamp"], keep="last")
         base = base.merge(liq_df, on="timestamp", how="left")
@@ -191,44 +214,63 @@ def build_features(
     flow_feats = compute_flow_features(base)
     regime_feats = compute_regime_features(base)
 
-    # ── Interaction features ─────────────────────────────────
+    # ── Static interaction features ──────────────────────────
     interactions = pd.DataFrame(index=base.index)
 
     # Funding x OI
     if "funding_rate" in funding_feats.columns and "oi_change_1h" in oi_feats.columns:
-        interactions["funding_x_oi_change"] = funding_feats["funding_rate"] * oi_feats["oi_change_1h"]
+        interactions["funding_x_oi_change"] = (
+            funding_feats["funding_rate"] * oi_feats["oi_change_1h"]
+        )
 
     # Liquidation x Taker flow
     if "liq_imbalance" in liq_feats.columns and "taker_net_flow" in flow_feats.columns:
-        interactions["liq_x_taker_flow"] = liq_feats["liq_imbalance"] * flow_feats["taker_net_flow"]
+        interactions["liq_x_taker_flow"] = (
+            liq_feats["liq_imbalance"] * flow_feats["taker_net_flow"]
+        )
 
     # Funding x LS ratio
     if "funding_rate" in funding_feats.columns and "ls_ratio" in flow_feats.columns:
-        interactions["funding_x_ls_ratio"] = funding_feats["funding_rate"] * flow_feats["ls_ratio"]
+        interactions["funding_x_ls_ratio"] = (
+            funding_feats["funding_rate"] * flow_feats["ls_ratio"]
+        )
 
     # OI change x Price momentum
     if "oi_change_24h" in oi_feats.columns and "ret_24h" in price_feats.columns:
-        interactions["oi_change_x_ret_24h"] = oi_feats["oi_change_24h"] * price_feats["ret_24h"]
+        interactions["oi_change_x_ret_24h"] = (
+            oi_feats["oi_change_24h"] * price_feats["ret_24h"]
+        )
+
+    # ── Temporal interaction features (second-order cross-features) ──
+    temporal_feats = compute_temporal_interaction_features(base)
 
     # ── Combine all features ─────────────────────────────────
-    result = pd.concat([
-        base[["timestamp"]],
-        price_feats,
-        funding_feats,
-        oi_feats,
-        liq_feats,
-        flow_feats,
-        regime_feats,
-        interactions,
-    ], axis=1)
+    result = pd.concat(
+        [
+            base[["timestamp"]],
+            price_feats,
+            funding_feats,
+            oi_feats,
+            liq_feats,
+            flow_feats,
+            regime_feats,
+            interactions,
+            temporal_feats,
+        ],
+        axis=1,
+    )
 
     # Drop regime_label from features (it's a label, not a feature for the model)
-    regime_label = result.pop("regime_label") if "regime_label" in result.columns else None
+    regime_label = (
+        result.pop("regime_label") if "regime_label" in result.columns else None
+    )
 
     # Replace inf with nan
     result = result.replace([np.inf, -np.inf], np.nan)
 
-    logger.info("features_built", n_features=len(result.columns) - 1, n_rows=len(result))
+    logger.info(
+        "features_built", n_features=len(result.columns) - 1, n_rows=len(result)
+    )
 
     # Apply dynamic evolution config (disable features, add custom interactions)
     result = _apply_evolution_config(result)
@@ -243,26 +285,34 @@ def build_features(
 def get_feature_names(exclude: list[str] | None = None) -> list[str]:
     """Get list of all feature column names (excluding timestamp and regime_label)."""
     # Build from a small dummy to discover column names
-    dummy = pd.DataFrame({
-        "timestamp": pd.date_range("2024-01-01", periods=200, freq="h", tz="UTC"),
-        "open": np.random.randn(200).cumsum() + 50000,
-        "high": np.random.randn(200).cumsum() + 50100,
-        "low": np.random.randn(200).cumsum() + 49900,
-        "close": np.random.randn(200).cumsum() + 50000,
-        "volume": np.abs(np.random.randn(200)) * 1000,
-        "funding_close": np.random.randn(200) * 0.001,
-        "oi_close": np.random.randn(200).cumsum() + 1e9,
-        "long_liquidations_usd": np.abs(np.random.randn(200)) * 1e6,
-        "short_liquidations_usd": np.abs(np.random.randn(200)) * 1e6,
-        "total_liquidations_usd": np.abs(np.random.randn(200)) * 2e6,
-        "long_short_ratio": np.random.randn(200) * 0.1 + 1.0,
-        "buy_volume": np.abs(np.random.randn(200)) * 1e6,
-        "sell_volume": np.abs(np.random.randn(200)) * 1e6,
-        "buy_sell_ratio": np.random.randn(200) * 0.1 + 1.0,
-    })
+    dummy = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2024-01-01", periods=200, freq="h", tz="UTC"),
+            "open": np.random.randn(200).cumsum() + 50000,
+            "high": np.random.randn(200).cumsum() + 50100,
+            "low": np.random.randn(200).cumsum() + 49900,
+            "close": np.random.randn(200).cumsum() + 50000,
+            "volume": np.abs(np.random.randn(200)) * 1000,
+            "funding_close": np.random.randn(200) * 0.001,
+            "oi_close": np.random.randn(200).cumsum() + 1e9,
+            "long_liquidations_usd": np.abs(np.random.randn(200)) * 1e6,
+            "short_liquidations_usd": np.abs(np.random.randn(200)) * 1e6,
+            "total_liquidations_usd": np.abs(np.random.randn(200)) * 2e6,
+            "long_short_ratio": np.random.randn(200) * 0.1 + 1.0,
+            "buy_volume": np.abs(np.random.randn(200)) * 1e6,
+            "sell_volume": np.abs(np.random.randn(200)) * 1e6,
+            "buy_sell_ratio": np.random.randn(200) * 0.1 + 1.0,
+        }
+    )
 
-    raw_data = {"price": dummy, "funding": pd.DataFrame(), "oi": pd.DataFrame(),
-                "liquidations": pd.DataFrame(), "long_short": pd.DataFrame(), "taker_flow": pd.DataFrame()}
+    raw_data = {
+        "price": dummy,
+        "funding": pd.DataFrame(),
+        "oi": pd.DataFrame(),
+        "liquidations": pd.DataFrame(),
+        "long_short": pd.DataFrame(),
+        "taker_flow": pd.DataFrame(),
+    }
     feats = build_features(raw_data=raw_data)
 
     skip = {"timestamp", "regime_label"} | set(exclude or [])

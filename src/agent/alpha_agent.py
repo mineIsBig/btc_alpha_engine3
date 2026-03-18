@@ -27,11 +27,11 @@ GUARDRAILS:
 4. Changelog: every change is recorded with rollback capability.
 5. Executor safety bounds: all numeric parameters are clamped within safe ranges.
 """
+
 from __future__ import annotations
 
 import json
 import traceback
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +49,7 @@ from src.agent.guardrails import (
     ReflectResponse,
 )
 from src.agent.executor import ChangeExecutor, should_retrain
-from src.agent.evolution_config import load_evolution_config, save_evolution_config
+from src.agent.evolution_config import load_evolution_config
 from src.compute.dispatcher import ComputeDispatcher
 
 logger = get_logger(__name__)
@@ -145,7 +145,9 @@ Respond with JSON:
             raw = self.compute.agent_inference_json(prompt, system=SYSTEM_PROMPT)
             validated = validate_design_response(raw)
             if validated.analysis == "LLM response failed validation":
-                logger.warning("design_llm_response_invalid", raw_type=type(raw).__name__)
+                logger.warning(
+                    "design_llm_response_invalid", raw_type=type(raw).__name__
+                )
             return validated
         except json.JSONDecodeError as e:
             logger.error("design_json_parse_failed", error=str(e))
@@ -154,7 +156,9 @@ Respond with JSON:
             logger.error("design_phase_failed", error=str(e))
             return DesignResponse(analysis=f"LLM unavailable: {e}")
 
-    def run_system(self, features_df=None, raw_data: dict | None = None) -> dict[str, Any]:
+    def run_system(
+        self, features_df=None, raw_data: dict | None = None
+    ) -> dict[str, Any]:
         from src.features.feature_pipeline import build_features
         from src.models.registry import ModelArtifactRegistry
         from src.portfolio.ensemble import EnsembleAggregator
@@ -164,7 +168,9 @@ Respond with JSON:
         results: dict[str, Any] = {"signals": {}, "metrics": {}, "errors": []}
         try:
             if features_df is None:
-                features_df = build_features(raw_data=raw_data) if raw_data else build_features()
+                features_df = (
+                    build_features(raw_data=raw_data) if raw_data else build_features()
+                )
             if features_df is None or features_df.empty:
                 results["errors"].append("No feature data available")
                 return results
@@ -182,37 +188,53 @@ Respond with JSON:
                 for model_info in promoted:
                     try:
                         model = registry.load_model(model_info["model_id"])
-                        feat_cols = [c for c in model.feature_names if c in features_df.columns]
+                        feat_cols = [
+                            c for c in model.feature_names if c in features_df.columns
+                        ]
                         if len(feat_cols) < 3:
                             continue
                         X = features_df[feat_cols].fillna(0)
                         sig = model.get_signal(X)
-                        h_signals.append(ModelSignal(
-                            model_id=model_info["model_id"], horizon=horizon,
-                            side=sig["side"], probability=sig["probability"],
-                            confidence=sig["confidence"],
-                            oos_sharpe=model_info.get("oos_sharpe", 0),
-                        ))
+                        h_signals.append(
+                            ModelSignal(
+                                model_id=model_info["model_id"],
+                                horizon=horizon,
+                                side=sig["side"],
+                                probability=sig["probability"],
+                                confidence=sig["confidence"],
+                                oos_sharpe=model_info.get("oos_sharpe", 0),
+                            )
+                        )
                     except Exception as e:
                         results["errors"].append(f"Model {model_info['model_id']}: {e}")
                 if h_signals:
                     horizon_signals[horizon] = h_signals
 
-            agg_signals = {h: ensemble.aggregate(sigs) for h, sigs in horizon_signals.items()}
+            agg_signals = {
+                h: ensemble.aggregate(sigs) for h, sigs in horizon_signals.items()
+            }
             final_side, reason = consensus.check(agg_signals)
 
             results["signals"] = {
-                "final_side": final_side, "reason": reason,
+                "final_side": final_side,
+                "reason": reason,
                 "horizon_signals": {h: len(s) for h, s in horizon_signals.items()},
-                "aggregated": {h: {"side": a.target_side, "consensus": a.consensus_pct} for h, a in agg_signals.items()},
+                "aggregated": {
+                    h: {"side": a.target_side, "consensus": a.consensus_pct}
+                    for h, a in agg_signals.items()
+                },
             }
-            results["metrics"]["n_models"] = sum(len(s) for s in horizon_signals.values())
+            results["metrics"]["n_models"] = sum(
+                len(s) for s in horizon_signals.values()
+            )
         except Exception as e:
             results["errors"].append(f"run_system: {e}")
             logger.error("run_system_failed", error=str(e))
         return results
 
-    def measure(self, run_results: dict[str, Any], current_price: float) -> dict[str, Any]:
+    def measure(
+        self, run_results: dict[str, Any], current_price: float
+    ) -> dict[str, Any]:
         if current_price > 0:
             self.scorecard.score_signals(current_price)
 
@@ -222,13 +244,25 @@ Respond with JSON:
         try:
             from src.storage.database import get_session
             from src.storage.models import WalkForwardRun
+
             session = get_session()
-            latest_runs = session.query(WalkForwardRun).order_by(WalkForwardRun.created_at.desc()).limit(20).all()
+            latest_runs = (
+                session.query(WalkForwardRun)
+                .order_by(WalkForwardRun.created_at.desc())
+                .limit(20)
+                .all()
+            )
             if latest_runs:
                 sharpes = [r.sharpe for r in latest_runs if r.sharpe is not None]
-                wf_metrics["avg_oos_sharpe"] = sum(sharpes) / len(sharpes) if sharpes else 0
-                drawdowns = [r.max_drawdown for r in latest_runs if r.max_drawdown is not None]
-                wf_metrics["avg_max_drawdown"] = sum(drawdowns) / len(drawdowns) if drawdowns else 0
+                wf_metrics["avg_oos_sharpe"] = (
+                    sum(sharpes) / len(sharpes) if sharpes else 0
+                )
+                drawdowns = [
+                    r.max_drawdown for r in latest_runs if r.max_drawdown is not None
+                ]
+                wf_metrics["avg_max_drawdown"] = (
+                    sum(drawdowns) / len(drawdowns) if drawdowns else 0
+                )
             session.close()
         except Exception:
             pass
@@ -236,10 +270,17 @@ Respond with JSON:
         self.state.rolling_sharpe = scorecard_metrics.get("signal_sharpe", 0.0)
         self.state.max_drawdown = scorecard_metrics.get("max_drawdown_pct", 0.0)
         self.state.cumulative_pnl = scorecard_metrics.get("cumulative_pnl_usd", 0.0)
-        self.state.correct_signals = int(scorecard_metrics.get("signal_accuracy", 0) * scorecard_metrics.get("n_signals_scored", 0))
+        self.state.correct_signals = int(
+            scorecard_metrics.get("signal_accuracy", 0)
+            * scorecard_metrics.get("n_signals_scored", 0)
+        )
 
-        return {"scorecard_metrics": scorecard_metrics, "walk_forward_metrics": wf_metrics,
-                "n_models": run_results.get("metrics", {}).get("n_models", 0), **wf_metrics}
+        return {
+            "scorecard_metrics": scorecard_metrics,
+            "walk_forward_metrics": wf_metrics,
+            "n_models": run_results.get("metrics", {}).get("n_models", 0),
+            **wf_metrics,
+        }
 
     def reflect(self, performance: dict[str, Any]) -> ReflectResponse:
         """LLM reflects on performance. Returns validated ReflectResponse."""
@@ -277,8 +318,12 @@ Be honest. Respond with JSON:
             logger.error("reflect_failed", error=str(e))
             return ReflectResponse(reflection=f"LLM unavailable: {e}")
 
-    def improve(self, design: DesignResponse, reflection: ReflectResponse,
-                scorecard_metrics: dict[str, Any]) -> list[str]:
+    def improve(
+        self,
+        design: DesignResponse,
+        reflection: ReflectResponse,
+        scorecard_metrics: dict[str, Any],
+    ) -> list[str]:
         """Apply improvements with full guardrails pipeline + REAL EXECUTION.
 
         Pipeline:
@@ -308,12 +353,17 @@ Be honest. Respond with JSON:
             )
 
         if not scope_approved:
-            logger.info("improve_all_changes_rejected_by_scope", n_rejected=len(scope_rejections))
+            logger.info(
+                "improve_all_changes_rejected_by_scope",
+                n_rejected=len(scope_rejections),
+            )
             self._update_state_from_reflection(reflection)
             return []
 
         # ── Step 2: Validation gate ──────────────────────────
-        gate_approved, gate_rejections = validation_gate(scope_approved, scorecard_metrics)
+        gate_approved, gate_rejections = validation_gate(
+            scope_approved, scorecard_metrics
+        )
 
         for rej in gate_rejections:
             matching = [c for c in scope_approved if c.detail[:100] == rej["detail"]]
@@ -357,7 +407,9 @@ Be honest. Respond with JSON:
                 validation_result=validation_msg,
                 scorecard_snapshot=scorecard_metrics,
             )
-            logger.info("improvement_result", change=desc, success=succeeded, msg=exec_msg)
+            logger.info(
+                "improvement_result", change=desc, success=succeeded, msg=exec_msg
+            )
 
         self.changelog.save()
 
@@ -373,13 +425,15 @@ Be honest. Respond with JSON:
             self.evolution_config, self.state.iteration, scorecard_metrics
         )
 
-        logger.info("improve_summary",
-                     proposed=len(proposed),
-                     scope_rejected=len(scope_rejections),
-                     gate_rejected=len(gate_rejections),
-                     executed=len([r for r in execution_results if r.get("success")]),
-                     failed=len([r for r in execution_results if not r.get("success")]),
-                     applied=len(improvements))
+        logger.info(
+            "improve_summary",
+            proposed=len(proposed),
+            scope_rejected=len(scope_rejections),
+            gate_rejected=len(gate_rejections),
+            executed=len([r for r in execution_results if r.get("success")]),
+            failed=len([r for r in execution_results if not r.get("success")]),
+            applied=len(improvements),
+        )
 
         return improvements
 
@@ -388,18 +442,30 @@ Be honest. Respond with JSON:
         self.state.weaknesses = reflection.weaknesses[:10]
         self.state.last_reflection = reflection.reflection
 
-    def generate_signal(self, run_results: dict[str, Any], performance: dict[str, Any],
-                        current_price: float = 0.0, equity: float = 100000.0) -> SignalOutput:
+    def generate_signal(
+        self,
+        run_results: dict[str, Any],
+        performance: dict[str, Any],
+        current_price: float = 0.0,
+        equity: float = 100000.0,
+    ) -> SignalOutput:
         """Generate signal using dynamic TP/SL calibration from EvolutionConfig."""
         signals = run_results.get("signals", {})
         final_side = signals.get("final_side", 0)
         reason = signals.get("reason", "no_signals")
-        direction = "long" if final_side == 1 else "short" if final_side == -1 else "flat"
+        direction = (
+            "long" if final_side == 1 else "short" if final_side == -1 else "flat"
+        )
 
         if direction == "flat" or current_price <= 0:
-            return SignalOutput(timestamp=utc_now(), direction="flat", reasoning=reason,
-                              agent_iteration=self.state.iteration, system_sharpe=self.state.rolling_sharpe,
-                              system_drawdown=self.state.max_drawdown)
+            return SignalOutput(
+                timestamp=utc_now(),
+                direction="flat",
+                reasoning=reason,
+                agent_iteration=self.state.iteration,
+                system_sharpe=self.state.rolling_sharpe,
+                system_drawdown=self.state.max_drawdown,
+            )
 
         # Use dynamic TP/SL from evolution config
         tp_sl = self.evolution_config.tp_sl
@@ -415,26 +481,43 @@ Be honest. Respond with JSON:
         agg = signals.get("aggregated", {})
         consensus_vals = [v.get("consensus", 0) for v in agg.values()] if agg else [0.5]
         confidence = max(consensus_vals) if consensus_vals else 0.5
-        size_pct = min(tp_sl.max_position_size_pct, confidence * tp_sl.confidence_sizing_factor)
-        consensus_horizons = [h for h, a in agg.items() if a.get("side", 0) == final_side]
+        size_pct = min(
+            tp_sl.max_position_size_pct, confidence * tp_sl.confidence_sizing_factor
+        )
+        consensus_horizons = [
+            h for h, a in agg.items() if a.get("side", 0) == final_side
+        ]
 
         expected_return = atr_pct * tp_sl.atr_multiplier_tp * final_side * 100
 
         return SignalOutput(
-            timestamp=utc_now(), direction=direction,
-            position_size_pct=size_pct, position_size_usd=round(equity * size_pct, 2),
-            entry_price=current_price, take_profit=round(take_profit, 2), stop_loss=round(stop_loss, 2),
+            timestamp=utc_now(),
+            direction=direction,
+            position_size_pct=size_pct,
+            position_size_usd=round(equity * size_pct, 2),
+            entry_price=current_price,
+            take_profit=round(take_profit, 2),
+            stop_loss=round(stop_loss, 2),
             expected_return_pct=round(expected_return, 2),
             expected_holding_hours=max(consensus_horizons) if consensus_horizons else 4,
-            risk_reward_ratio=round(abs(take_profit - current_price) / max(abs(stop_loss - current_price), 0.01), 2),
-            confidence=confidence, consensus_horizons=consensus_horizons, reasoning=reason,
-            agent_iteration=self.state.iteration, system_sharpe=self.state.rolling_sharpe,
+            risk_reward_ratio=round(
+                abs(take_profit - current_price)
+                / max(abs(stop_loss - current_price), 0.01),
+                2,
+            ),
+            confidence=confidence,
+            consensus_horizons=consensus_horizons,
+            reasoning=reason,
+            agent_iteration=self.state.iteration,
+            system_sharpe=self.state.rolling_sharpe,
             system_drawdown=self.state.max_drawdown,
         )
 
     def check_retrain_needed(self, scorecard_metrics: dict[str, Any]) -> bool:
         """Check if model retraining should be triggered."""
-        return should_retrain(self.evolution_config, self.state.iteration, scorecard_metrics)
+        return should_retrain(
+            self.evolution_config, self.state.iteration, scorecard_metrics
+        )
 
     def run_retrain(self) -> dict[str, Any]:
         """Execute autonomous retraining cycle.
@@ -443,6 +526,7 @@ Be honest. Respond with JSON:
         promotes/retires models based on walk-forward results.
         """
         from src.orchestrator.research_cycle import auto_retrain_and_promote
+
         result = auto_retrain_and_promote(iteration=self.state.iteration)
         # Reload config after retrain (retrain updates last_retrain_iteration)
         self.evolution_config = load_evolution_config()
@@ -450,16 +534,19 @@ Be honest. Respond with JSON:
         self.state.retrain_pending = False
         return result
 
-    def manage_model_lifecycle(self, scorecard_metrics: dict[str, Any]) -> dict[str, Any]:
+    def manage_model_lifecycle(
+        self, scorecard_metrics: dict[str, Any]
+    ) -> dict[str, Any]:
         """Evaluate and retire underperforming promoted models based on live signal performance.
 
         Uses per-model signal tracking from scorecard to identify models that are
         dragging down ensemble performance.
         """
         from src.models.registry import ModelArtifactRegistry
+
         lifecycle = self.evolution_config.model_lifecycle
         registry = ModelArtifactRegistry()
-        result = {"retired": [], "kept": []}
+        result: dict[str, list] = {"retired": [], "kept": []}
 
         n_signals = scorecard_metrics.get("n_signals_scored", 0)
         if n_signals < lifecycle.min_signals_for_eval:
@@ -472,9 +559,17 @@ Be honest. Respond with JSON:
                 try:
                     registry.retire_model(model_info["model_id"])
                     result["retired"].append(model_info["model_id"])
-                    logger.info("model_auto_retired", model_id=model_info["model_id"], sharpe=sharpe)
+                    logger.info(
+                        "model_auto_retired",
+                        model_id=model_info["model_id"],
+                        sharpe=sharpe,
+                    )
                 except Exception as e:
-                    logger.warning("model_retire_failed", model_id=model_info["model_id"], error=str(e))
+                    logger.warning(
+                        "model_retire_failed",
+                        model_id=model_info["model_id"],
+                        error=str(e),
+                    )
             else:
                 result["kept"].append(model_info["model_id"])
 
@@ -482,8 +577,12 @@ Be honest. Respond with JSON:
         self.state.model_population_size = len(result["kept"])
         return result
 
-    def iterate(self, current_price: float = 0.0, equity: float = 100000.0,
-                raw_data: dict | None = None) -> SignalOutput:
+    def iterate(
+        self,
+        current_price: float = 0.0,
+        equity: float = 100000.0,
+        raw_data: dict | None = None,
+    ) -> SignalOutput:
         """Run one full ralph-loop iteration with guardrails and real evolution.
 
         The critical difference from advisory-only agents:
@@ -502,29 +601,45 @@ Be honest. Respond with JSON:
         - Executor clamps all numeric params within safe bounds
         """
         self.state.iteration += 1
-        logger.info("agent_iteration_start", iteration=self.state.iteration,
-                     evolution_version=self.evolution_config.version)
+        logger.info(
+            "agent_iteration_start",
+            iteration=self.state.iteration,
+            evolution_version=self.evolution_config.version,
+        )
 
         try:
             # ═══ SCORE PREVIOUS SIGNALS FIRST ═══
             if current_price > 0:
                 just_closed = self.scorecard.score_signals(current_price)
                 for sig in just_closed:
-                    logger.info("signal_outcome", id=sig.signal_id, status=sig.status,
-                               pnl=f"{sig.pnl_pct:+.2%}", bars=sig.bars_held)
+                    logger.info(
+                        "signal_outcome",
+                        id=sig.signal_id,
+                        status=sig.status,
+                        pnl=f"{sig.pnl_pct:+.2%}",
+                        bars=sig.bars_held,
+                    )
 
             # Check real profitability
             is_profitable, verdict = self.scorecard.is_profitable(min_signals=10)
-            logger.info("profitability_check", profitable=is_profitable, verdict=verdict)
+            logger.info(
+                "profitability_check", profitable=is_profitable, verdict=verdict
+            )
 
             scorecard_metrics = self.scorecard.compute_metrics()
-            prev_perf = {"scorecard_metrics": scorecard_metrics,
-                        "is_profitable": is_profitable, "verdict": verdict, "iteration": self.state.iteration}
+            prev_perf = {
+                "scorecard_metrics": scorecard_metrics,
+                "is_profitable": is_profitable,
+                "verdict": verdict,
+                "iteration": self.state.iteration,
+            }
 
             # ═══ MODEL LIFECYCLE — retire underperformers ═══
             lifecycle_result = self.manage_model_lifecycle(scorecard_metrics)
             if lifecycle_result["retired"]:
-                logger.info("models_retired_this_iteration", retired=lifecycle_result["retired"])
+                logger.info(
+                    "models_retired_this_iteration", retired=lifecycle_result["retired"]
+                )
 
             # ═══ DESIGN (with schema validation) ═══
             design = self.design_or_modify(prev_perf)
@@ -539,10 +654,14 @@ Be honest. Respond with JSON:
             reflection = self.reflect(performance)
 
             # ═══ IMPROVE (with scope + validation gate + EXECUTION) ═══
-            improvements = self.improve(design, reflection, performance.get("scorecard_metrics", {}))
+            improvements = self.improve(
+                design, reflection, performance.get("scorecard_metrics", {})
+            )
 
             # ═══ GENERATE SIGNAL (uses evolved TP/SL calibration) ═══
-            signal = self.generate_signal(run_results, performance, current_price, equity)
+            signal = self.generate_signal(
+                run_results, performance, current_price, equity
+            )
             self.state.total_signals += 1
             self.state.last_signal = signal
 
@@ -551,15 +670,25 @@ Be honest. Respond with JSON:
             self.scorecard.save()
             self._save_state()
 
-            logger.info("agent_iteration_complete", iteration=self.state.iteration,
-                       direction=signal.direction, profitable=is_profitable,
-                       changes_applied=len(improvements),
-                       evolution_version=self.evolution_config.version,
-                       retrain_pending=self.state.retrain_pending)
+            logger.info(
+                "agent_iteration_complete",
+                iteration=self.state.iteration,
+                direction=signal.direction,
+                profitable=is_profitable,
+                changes_applied=len(improvements),
+                evolution_version=self.evolution_config.version,
+                retrain_pending=self.state.retrain_pending,
+            )
             return signal
 
         except Exception as e:
-            logger.error("agent_iteration_failed", error=str(e), trace=traceback.format_exc())
+            logger.error(
+                "agent_iteration_failed", error=str(e), trace=traceback.format_exc()
+            )
             self._save_state()
-            return SignalOutput(timestamp=utc_now(), direction="flat",
-                              reasoning=f"Agent error: {e}", agent_iteration=self.state.iteration)
+            return SignalOutput(
+                timestamp=utc_now(),
+                direction="flat",
+                reasoning=f"Agent error: {e}",
+                agent_iteration=self.state.iteration,
+            )

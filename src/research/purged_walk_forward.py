@@ -6,6 +6,7 @@ Strict rolling train/test splits with:
 - Embargo gap after test end before next train can start
 - Configurable window sizes
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,7 +26,7 @@ logger = get_logger(__name__)
 # forward-looking labels bleeding into the train set.
 # Formula: max(base_purge, horizon * multiplier)
 PURGE_HORIZON_MULTIPLIER = 3.0  # purge = 3x the label horizon
-MIN_PURGE_HOURS = 48            # absolute floor regardless of horizon
+MIN_PURGE_HOURS = 48  # absolute floor regardless of horizon
 
 
 def compute_purge_hours(base_purge: int, horizon: int | None = None) -> int:
@@ -51,6 +52,7 @@ def compute_purge_hours(base_purge: int, horizon: int | None = None) -> int:
 @dataclass
 class WalkForwardFold:
     """A single walk-forward fold."""
+
     fold_idx: int
     train_start: datetime
     train_end: datetime
@@ -85,9 +87,13 @@ class PurgedWalkForward:
         self.purge_hours = compute_purge_hours(purge_hours, horizon)
 
         if self.purge_hours != purge_hours:
-            logger.info("purge_gap_scaled",
-                        base=purge_hours, effective=self.purge_hours,
-                        horizon=horizon, reason="purge >= horizon * 3")
+            logger.info(
+                "purge_gap_scaled",
+                base=purge_hours,
+                effective=self.purge_hours,
+                horizon=horizon,
+                reason="purge >= horizon * 3",
+            )
 
     @classmethod
     def from_config(cls, horizon: int | None = None) -> PurgedWalkForward:
@@ -109,7 +115,9 @@ class PurgedWalkForward:
             horizon=horizon,
         )
 
-    def split(self, timestamps: pd.Series | np.ndarray) -> Generator[WalkForwardFold, None, None]:
+    def split(
+        self, timestamps: pd.Series | np.ndarray
+    ) -> Generator[WalkForwardFold, None, None]:
         """Generate walk-forward folds.
 
         Args:
@@ -130,7 +138,7 @@ class PurgedWalkForward:
         train_td = timedelta(days=self.train_days)
         test_td = timedelta(days=self.test_days)
         purge_td = timedelta(hours=self.purge_hours)
-        embargo_td = timedelta(hours=self.embargo_hours)
+        _embargo_td = timedelta(hours=self.embargo_hours)  # noqa: F841
         step_td = timedelta(days=self.step_days)
 
         fold_idx = 0

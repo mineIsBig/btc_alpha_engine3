@@ -1,4 +1,5 @@
 """Regime detection features and labels."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -15,15 +16,23 @@ def compute_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = pd.DataFrame(index=df.index)
 
-    close = df["close"].astype(float) if "close" in df.columns else pd.Series(np.nan, index=df.index)
+    close = (
+        df["close"].astype(float)
+        if "close" in df.columns
+        else pd.Series(np.nan, index=df.index)
+    )
 
     # ── Trend detection ──────────────────────────────────────
     ma24 = close.rolling(24).mean()
     ma168 = close.rolling(168).mean()
     ret_24 = close.pct_change(24)
 
-    out["regime_trend_up"] = ((close > ma24) & (ma24 > ma168) & (ret_24 > 0.02)).astype(float)
-    out["regime_trend_down"] = ((close < ma24) & (ma24 < ma168) & (ret_24 < -0.02)).astype(float)
+    out["regime_trend_up"] = ((close > ma24) & (ma24 > ma168) & (ret_24 > 0.02)).astype(
+        float
+    )
+    out["regime_trend_down"] = (
+        (close < ma24) & (ma24 < ma168) & (ret_24 < -0.02)
+    ).astype(float)
 
     # Mean reversion: price far from MA but reverting
     price_vs_ma24 = (close - ma24) / ma24.replace(0, np.nan)
@@ -33,7 +42,9 @@ def compute_regime_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Crowding detection ───────────────────────────────────
     ls_ratio = df.get("long_short_ratio", pd.Series(1.0, index=df.index)).astype(float)
-    funding = df.get("funding_close", df.get("funding_rate", pd.Series(0.0, index=df.index))).astype(float)
+    funding = df.get(
+        "funding_close", df.get("funding_rate", pd.Series(0.0, index=df.index))
+    ).astype(float)
 
     ls_high = ls_ratio.rolling(168).quantile(0.9)
     ls_low = ls_ratio.rolling(168).quantile(0.1)
@@ -48,17 +59,21 @@ def compute_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     ).astype(float)
 
     # ── Panic flush ──────────────────────────────────────────
-    total_liq = df.get("total_liquidations_usd", pd.Series(0.0, index=df.index)).astype(float)
+    total_liq = df.get("total_liquidations_usd", pd.Series(0.0, index=df.index)).astype(
+        float
+    )
     liq_shock = total_liq / total_liq.rolling(168).mean().replace(0, np.nan)
 
-    out["regime_panic_flush"] = (
-        (ret_24 < -0.05) & (liq_shock > 3.0)
-    ).astype(float)
+    out["regime_panic_flush"] = ((ret_24 < -0.05) & (liq_shock > 3.0)).astype(float)
 
     # ── Squeeze detection ────────────────────────────────────
     # Short squeeze: price up + high short liquidations + funding going positive
-    long_liq = df.get("long_liquidations_usd", pd.Series(0.0, index=df.index)).astype(float)
-    short_liq = df.get("short_liquidations_usd", pd.Series(0.0, index=df.index)).astype(float)
+    long_liq = df.get("long_liquidations_usd", pd.Series(0.0, index=df.index)).astype(
+        float
+    )
+    short_liq = df.get("short_liquidations_usd", pd.Series(0.0, index=df.index)).astype(
+        float
+    )
     liq_denom = (long_liq + short_liq).replace(0, np.nan)
     short_liq_pct = short_liq / liq_denom
 

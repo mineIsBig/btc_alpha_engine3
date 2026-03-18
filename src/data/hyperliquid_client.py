@@ -14,10 +14,10 @@ Data endpoints available for fallback when Coinalyze is rate-limited:
 - metaAndAssetCtxs: current open interest snapshot (no history)
 - NOT available: liquidations history, long/short ratio, taker buy/sell
 """
+
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -169,13 +169,15 @@ class HyperliquidClient:
             ts = pd.to_datetime(ts_str, utc=True) if ts_str else None
             if ts is None:
                 continue
-            rows.append({
-                "timestamp": ts,
-                "open": rate,
-                "high": rate,
-                "low": rate,
-                "close": rate,
-            })
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "open": rate,
+                    "high": rate,
+                    "low": rate,
+                    "close": rate,
+                }
+            )
 
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -198,23 +200,29 @@ class HyperliquidClient:
         end_ms = ts_to_ms(end_time) if end_time else None
 
         data = self.get_candles(
-            symbol=symbol, interval=interval,
-            start_time=start_ms, end_time=end_ms,
+            symbol=symbol,
+            interval=interval,
+            start_time=start_ms,
+            end_time=end_ms,
         )
 
         if not data:
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+            return pd.DataFrame(
+                columns=["timestamp", "open", "high", "low", "close", "volume"]
+            )
 
         rows = []
         for item in data:
-            rows.append({
-                "timestamp": pd.to_datetime(item["t"], unit="ms", utc=True),
-                "open": float(item["o"]),
-                "high": float(item["h"]),
-                "low": float(item["l"]),
-                "close": float(item["c"]),
-                "volume": float(item.get("v", 0)),
-            })
+            rows.append(
+                {
+                    "timestamp": pd.to_datetime(item["t"], unit="ms", utc=True),
+                    "open": float(item["o"]),
+                    "high": float(item["h"]),
+                    "low": float(item["l"]),
+                    "close": float(item["c"]),
+                    "volume": float(item.get("v", 0)),
+                }
+            )
 
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -266,21 +274,29 @@ class HyperliquidClient:
                 "Live trading is disabled. Set LIVE_TRADING_ENABLED=true and configure wallet."
             )
         if not self.is_authenticated:
-            raise HyperliquidError("Not authenticated. Configure wallet address and API secret.")
+            raise HyperliquidError(
+                "Not authenticated. Configure wallet address and API secret."
+            )
 
         # TODO: Implement EIP-712 message signing for production.
         # The exact signing flow depends on the Hyperliquid SDK version.
         # For now, this is a structured placeholder that documents the payload format.
         order_payload = {
             "type": "order",
-            "orders": [{
-                "a": self._coin_to_asset_id(symbol),  # asset index
-                "b": is_buy,
-                "p": str(price) if price else "0",
-                "s": str(size),
-                "r": reduce_only,
-                "t": {"limit": {"tif": "Gtc"}} if order_type == "limit" else {"market": {}},
-            }],
+            "orders": [
+                {
+                    "a": self._coin_to_asset_id(symbol),  # asset index
+                    "b": is_buy,
+                    "p": str(price) if price else "0",
+                    "s": str(size),
+                    "r": reduce_only,
+                    "t": (
+                        {"limit": {"tif": "Gtc"}}
+                        if order_type == "limit"
+                        else {"market": {}}
+                    ),
+                }
+            ],
             "grouping": "na",
         }
         logger.info("hyperliquid_order_submit", payload=order_payload)

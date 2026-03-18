@@ -1,10 +1,11 @@
 """Baseline models: Logistic Regression and Random Forest."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
@@ -33,25 +34,32 @@ class LogisticRegressionModel(BaseAlphaModel):
         if penalty == "elasticnet":
             lr_params["l1_ratio"] = self.params.get("l1_ratio", 0.5)
 
-        return Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", LogisticRegression(**lr_params)),
-        ])
+        return Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("clf", LogisticRegression(**lr_params)),
+            ]
+        )
 
 
 class RandomForestModel(BaseAlphaModel):
     """Random Forest classifier."""
 
     def _build_model(self) -> Any:
-        return Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", RandomForestClassifier(
-                n_estimators=self.params.get("n_estimators", 200),
-                max_depth=self.params.get("max_depth", 10),
-                min_samples_leaf=self.params.get("min_samples_leaf", 20),
-                max_features=self.params.get("max_features", "sqrt"),
-                class_weight="balanced",
-                random_state=42,
-                n_jobs=-1,
-            )),
-        ])
+        return Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "clf",
+                    RandomForestClassifier(
+                        n_estimators=self.params.get("n_estimators", 200),
+                        max_depth=self.params.get("max_depth", 10),
+                        min_samples_leaf=self.params.get("min_samples_leaf", 20),
+                        max_features=self.params.get("max_features", "sqrt"),
+                        class_weight="balanced",
+                        random_state=42,
+                        n_jobs=-1,
+                    ),
+                ),
+            ]
+        )

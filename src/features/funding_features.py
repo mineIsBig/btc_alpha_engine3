@@ -1,4 +1,5 @@
 """Funding rate derived features."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,7 +13,11 @@ def compute_funding_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = pd.DataFrame(index=df.index)
 
-    fr = df["funding_close"].astype(float) if "funding_close" in df.columns else df.get("close", pd.Series(dtype=float))
+    fr = (
+        df["funding_close"].astype(float)
+        if "funding_close" in df.columns
+        else df.get("close", pd.Series(dtype=float))
+    )
 
     # ── Level ────────────────────────────────────────────────
     out["funding_rate"] = fr
@@ -37,7 +42,9 @@ def compute_funding_features(df: pd.DataFrame) -> pd.DataFrame:
     sign = np.sign(fr)
     groups = (sign != sign.shift()).cumsum()
     out["funding_persistence"] = sign.groupby(groups).cumcount() + 1
-    out["funding_persistence"] = out["funding_persistence"] * sign  # negative if negative funding
+    out["funding_persistence"] = (
+        out["funding_persistence"] * sign
+    )  # negative if negative funding
 
     # ── Extreme flags ────────────────────────────────────────
     q95 = fr.rolling(168).quantile(0.95)

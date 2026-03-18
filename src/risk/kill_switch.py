@@ -1,4 +1,5 @@
 """Kill switch: circuit breaker for runaway trading activity."""
+
 from __future__ import annotations
 
 from collections import deque
@@ -22,9 +23,15 @@ class KillSwitch:
         cooldown_minutes: int | None = None,
     ):
         cfg = load_yaml_config("risk_limits.yaml").get("kill_switch", {})
-        self.max_orders_per_hour = max_orders_per_hour or cfg.get("max_orders_per_hour", 20)
-        self.max_fills_per_hour = max_fills_per_hour or cfg.get("max_fills_per_hour", 10)
-        self.max_consecutive_losses = max_consecutive_losses or cfg.get("max_consecutive_losses", 5)
+        self.max_orders_per_hour = max_orders_per_hour or cfg.get(
+            "max_orders_per_hour", 20
+        )
+        self.max_fills_per_hour = max_fills_per_hour or cfg.get(
+            "max_fills_per_hour", 10
+        )
+        self.max_consecutive_losses = max_consecutive_losses or cfg.get(
+            "max_consecutive_losses", 5
+        )
         self.cooldown_minutes = cooldown_minutes or cfg.get("cooldown_minutes", 30)
 
         self._order_times: deque[datetime] = deque()
@@ -57,7 +64,9 @@ class KillSwitch:
         self._prune_window(self._order_times)
 
         if len(self._order_times) > self.max_orders_per_hour:
-            self._trigger(f"max_orders_exceeded ({len(self._order_times)}/{self.max_orders_per_hour})")
+            self._trigger(
+                f"max_orders_exceeded ({len(self._order_times)}/{self.max_orders_per_hour})"
+            )
             return False
         return True
 
@@ -68,7 +77,9 @@ class KillSwitch:
         self._prune_window(self._fill_times)
 
         if len(self._fill_times) > self.max_fills_per_hour:
-            self._trigger(f"max_fills_exceeded ({len(self._fill_times)}/{self.max_fills_per_hour})")
+            self._trigger(
+                f"max_fills_exceeded ({len(self._fill_times)}/{self.max_fills_per_hour})"
+            )
             return False
 
         # Track consecutive losses

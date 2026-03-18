@@ -1,4 +1,5 @@
 """Stop-loss and take-profit logic."""
+
 from __future__ import annotations
 
 from src.common.logging import get_logger

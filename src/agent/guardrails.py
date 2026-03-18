@@ -13,10 +13,10 @@ Three guardrails for the Arbos-inspired ralph-loop:
    walk-forward fold before being applied. Every change is recorded in a changelog
    with rollback capability.
 """
+
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -50,9 +50,14 @@ class ChangeAction(str, Enum):
 
 class ProposedChange(BaseModel):
     """A single proposed change from the LLM."""
-    type: str = Field(..., description="Category: feature, model, hyperparameter, ensemble, risk")
+
+    type: str = Field(
+        ..., description="Category: feature, model, hyperparameter, ensemble, risk"
+    )
     action: str = Field(..., description="Action: add, remove, modify")
-    detail: str = Field(..., min_length=1, max_length=500, description="Specific change description")
+    detail: str = Field(
+        ..., min_length=1, max_length=500, description="Specific change description"
+    )
 
     @field_validator("type")
     @classmethod
@@ -75,6 +80,7 @@ class ProposedChange(BaseModel):
 
 class DesignResponse(BaseModel):
     """Validated schema for the design_or_modify() LLM response."""
+
     analysis: str = Field(default="", max_length=2000)
     is_system_profitable: bool = False
     weaknesses_found: list[str] = Field(default_factory=list, max_length=10)
@@ -84,6 +90,7 @@ class DesignResponse(BaseModel):
 
 class ReflectResponse(BaseModel):
     """Validated schema for the reflect() LLM response."""
+
     reflection: str = Field(default="", max_length=2000)
     is_actually_profitable: bool = False
     weaknesses: list[str] = Field(default_factory=list, max_length=10)
@@ -97,9 +104,14 @@ def validate_design_response(raw: dict[str, Any]) -> DesignResponse:
     try:
         return DesignResponse.model_validate(raw)
     except Exception as e:
-        logger.warning("design_response_validation_failed",
-                       error=str(e), raw_keys=list(raw.keys()) if isinstance(raw, dict) else "not_a_dict")
-        return DesignResponse(analysis="LLM response failed validation", proposed_changes=[])
+        logger.warning(
+            "design_response_validation_failed",
+            error=str(e),
+            raw_keys=list(raw.keys()) if isinstance(raw, dict) else "not_a_dict",
+        )
+        return DesignResponse(
+            analysis="LLM response failed validation", proposed_changes=[]
+        )
 
 
 def validate_reflect_response(raw: dict[str, Any]) -> ReflectResponse:
@@ -107,8 +119,11 @@ def validate_reflect_response(raw: dict[str, Any]) -> ReflectResponse:
     try:
         return ReflectResponse.model_validate(raw)
     except Exception as e:
-        logger.warning("reflect_response_validation_failed",
-                       error=str(e), raw_keys=list(raw.keys()) if isinstance(raw, dict) else "not_a_dict")
+        logger.warning(
+            "reflect_response_validation_failed",
+            error=str(e),
+            raw_keys=list(raw.keys()) if isinstance(raw, dict) else "not_a_dict",
+        )
         return ReflectResponse(reflection="LLM response failed validation")
 
 
@@ -137,21 +152,34 @@ ALLOWED_SCOPES = {
 # BLOCKED: The agent cannot modify risk limits. This is a hard constraint.
 BLOCKED_SCOPES = {
     ChangeType.RISK: "Risk limits are infrastructure-level settings and cannot be modified by the agent. "
-                     "Changes to daily loss limits, EOD trailing stops, position size caps, or kill switch "
-                     "thresholds require manual operator approval.",
+    "Changes to daily loss limits, EOD trailing stops, position size caps, or kill switch "
+    "thresholds require manual operator approval.",
 }
 
 # Keywords in change details that should be blocked regardless of scope.
 BLOCKED_KEYWORDS = [
-    "risk_limit", "daily_loss", "eod_trailing", "kill_switch", "max_position",
-    "flatten_on_breach", "leverage", "max_drawdown_limit",
-    "delete_database", "drop_table", "rm -rf", "os.system", "subprocess",
-    "eval(", "exec(", "import os",
+    "risk_limit",
+    "daily_loss",
+    "eod_trailing",
+    "kill_switch",
+    "max_position",
+    "flatten_on_breach",
+    "leverage",
+    "max_drawdown_limit",
+    "delete_database",
+    "drop_table",
+    "rm -rf",
+    "os.system",
+    "subprocess",
+    "eval(",
+    "exec(",
+    "import os",
 ]
 
 
 class ScopeViolation(Exception):
     """Raised when a proposed change violates scope constraints."""
+
     pass
 
 
@@ -166,8 +194,13 @@ def enforce_scope(change: ProposedChange) -> tuple[bool, str]:
     # Check if scope is blocked entirely
     if change_type in BLOCKED_SCOPES:
         reason = BLOCKED_SCOPES[change_type]
-        logger.warning("scope_violation_blocked", type=change.type, action=change.action,
-                       detail=change.detail[:100], reason=reason)
+        logger.warning(
+            "scope_violation_blocked",
+            type=change.type,
+            action=change.action,
+            detail=change.detail[:100],
+            reason=reason,
+        )
         return False, reason
 
     # Check if scope exists in allowed
@@ -177,8 +210,13 @@ def enforce_scope(change: ProposedChange) -> tuple[bool, str]:
     # Check if action is allowed for this scope
     scope = ALLOWED_SCOPES[change_type]
     if change_action not in scope["allowed_actions"]:
-        reason = f"Action '{change.action}' not allowed for scope '{change.type}'. Allowed: {[a.value for a in scope['allowed_actions']]}"
-        logger.warning("scope_violation_action", type=change.type, action=change.action, reason=reason)
+        reason = f"Action '{change.action}' not allowed for scope '{change.type}'. Allowed: {[str(a) for a in scope['allowed_actions']]}"
+        logger.warning(
+            "scope_violation_action",
+            type=change.type,
+            action=change.action,
+            reason=reason,
+        )
         return False, reason
 
     # Check for blocked keywords in detail
@@ -186,13 +224,17 @@ def enforce_scope(change: ProposedChange) -> tuple[bool, str]:
     for keyword in BLOCKED_KEYWORDS:
         if keyword in detail_lower:
             reason = f"Change detail contains blocked keyword: '{keyword}'"
-            logger.warning("scope_violation_keyword", detail=change.detail[:100], keyword=keyword)
+            logger.warning(
+                "scope_violation_keyword", detail=change.detail[:100], keyword=keyword
+            )
             return False, reason
 
     return True, "OK"
 
 
-def filter_changes_by_scope(changes: list[ProposedChange]) -> tuple[list[ProposedChange], list[dict[str, str]]]:
+def filter_changes_by_scope(
+    changes: list[ProposedChange],
+) -> tuple[list[ProposedChange], list[dict[str, str]]]:
     """Filter proposed changes, returning allowed changes and rejection reasons.
 
     Returns (allowed_changes, rejections).
@@ -205,12 +247,14 @@ def filter_changes_by_scope(changes: list[ProposedChange]) -> tuple[list[Propose
         if ok:
             allowed.append(change)
         else:
-            rejections.append({
-                "type": change.type,
-                "action": change.action,
-                "detail": change.detail[:100],
-                "reason": reason,
-            })
+            rejections.append(
+                {
+                    "type": change.type,
+                    "action": change.action,
+                    "detail": change.detail[:100],
+                    "reason": reason,
+                }
+            )
             logger.info("change_rejected_by_scope", type=change.type, reason=reason)
 
     return allowed, rejections
@@ -221,6 +265,7 @@ def filter_changes_by_scope(changes: list[ProposedChange]) -> tuple[list[Propose
 
 class ChangelogEntry(BaseModel):
     """A single entry in the agent changelog."""
+
     id: int
     timestamp: str
     iteration: int
@@ -246,7 +291,9 @@ class AgentChangelog:
             try:
                 with open(CHANGELOG_PATH) as f:
                     data = json.load(f)
-                self.entries = [ChangelogEntry.model_validate(e) for e in data.get("entries", [])]
+                self.entries = [
+                    ChangelogEntry.model_validate(e) for e in data.get("entries", [])
+                ]
                 self._next_id = max((e.id for e in self.entries), default=0) + 1
             except Exception as e:
                 logger.warning("changelog_load_failed", error=str(e))
@@ -279,8 +326,13 @@ class AgentChangelog:
         )
         self.entries.append(entry)
         self._next_id += 1
-        logger.info("changelog_entry", id=entry.id, type=change.type,
-                     action=change.action, status=status)
+        logger.info(
+            "changelog_entry",
+            id=entry.id,
+            type=change.type,
+            action=change.action,
+            status=status,
+        )
         return entry
 
     def rollback(self, entry_id: int, reason: str = "") -> bool:
@@ -311,12 +363,18 @@ class AgentChangelog:
                 entry.rollback_reason = reason
                 count += 1
         if count > 0:
-            logger.info("changelog_bulk_rollback", iteration=iteration, count=count, reason=reason)
+            logger.info(
+                "changelog_bulk_rollback",
+                iteration=iteration,
+                count=count,
+                reason=reason,
+            )
             self.save()
         return count
 
 
 # ── 4. Validation Gate ──────────────────────────────────────────
+
 
 def validation_gate(
     changes: list[ProposedChange],
@@ -343,29 +401,37 @@ def validation_gate(
 
     # If not enough data, allow all changes (system is still bootstrapping)
     if n_signals < 10:
-        logger.info("validation_gate_bootstrap", n_signals=n_signals,
-                     msg="Allowing all changes during bootstrap phase")
+        logger.info(
+            "validation_gate_bootstrap",
+            n_signals=n_signals,
+            msg="Allowing all changes during bootstrap phase",
+        )
         return changes, []
 
     # Emergency state: deep drawdown or severely negative Sharpe
     is_emergency = max_dd < -0.15 or recent_sharpe < -1.0
 
     if is_emergency:
-        logger.warning("validation_gate_emergency",
-                       max_dd=f"{max_dd:.2%}", recent_sharpe=f"{recent_sharpe:.2f}",
-                       msg="Emergency state: only conservative modifications allowed")
+        logger.warning(
+            "validation_gate_emergency",
+            max_dd=f"{max_dd:.2%}",
+            recent_sharpe=f"{recent_sharpe:.2f}",
+            msg="Emergency state: only conservative modifications allowed",
+        )
 
     for change in changes:
         if is_emergency:
             # In emergency, only allow modifying existing things (not adding new complexity)
             if change.action != ChangeAction.MODIFY.value:
-                rejections.append({
-                    "type": change.type,
-                    "action": change.action,
-                    "detail": change.detail[:100],
-                    "reason": f"Emergency state (DD={max_dd:.2%}, Sharpe={recent_sharpe:.2f}): "
-                              f"only 'modify' actions allowed, not '{change.action}'",
-                })
+                rejections.append(
+                    {
+                        "type": change.type,
+                        "action": change.action,
+                        "detail": change.detail[:100],
+                        "reason": f"Emergency state (DD={max_dd:.2%}, Sharpe={recent_sharpe:.2f}): "
+                        f"only 'modify' actions allowed, not '{change.action}'",
+                    }
+                )
                 continue
 
         approved.append(change)

@@ -1,4 +1,5 @@
 """Model artifact registry: save, load, promote, retire models."""
+
 from __future__ import annotations
 
 import json
@@ -119,14 +120,16 @@ class ModelArtifactRegistry:
                 q = q.filter_by(horizon=horizon)
             results = []
             for reg in q.all():
-                results.append({
-                    "model_id": reg.model_id,
-                    "model_type": reg.model_type,
-                    "horizon": reg.horizon,
-                    "oos_sharpe": reg.oos_sharpe,
-                    "oos_accuracy": reg.oos_accuracy,
-                    "artifact_path": reg.artifact_path,
-                })
+                results.append(
+                    {
+                        "model_id": reg.model_id,
+                        "model_type": reg.model_type,
+                        "horizon": reg.horizon,
+                        "oos_sharpe": reg.oos_sharpe,
+                        "oos_accuracy": reg.oos_accuracy,
+                        "artifact_path": reg.artifact_path,
+                    }
+                )
             return results
 
     def get_best_model_per_horizon(self) -> dict[int, str]:

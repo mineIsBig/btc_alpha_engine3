@@ -3,6 +3,7 @@
 Builds forward-return labels, ternary side labels, MFE/MAE,
 and optional triple-barrier meta-labels.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -68,12 +69,12 @@ def build_labels(
         mae = pd.Series(np.nan, index=price_df.index)
 
         for i in range(len(price_df) - h):
-            window_high = high.iloc[i + 1:i + h + 1].max()
-            window_low = low.iloc[i + 1:i + h + 1].min()
+            window_high = high.iloc[i + 1 : i + h + 1].max()
+            window_low = low.iloc[i + 1 : i + h + 1].min()
             entry = close.iloc[i]
 
-            mfe.iloc[i] = (window_high / entry - 1.0)
-            mae.iloc[i] = (window_low / entry - 1.0)
+            mfe.iloc[i] = window_high / entry - 1.0
+            mae.iloc[i] = window_low / entry - 1.0
 
         result[f"mfe_{h}h"] = mfe
         result[f"mae_{h}h"] = mae
@@ -132,22 +133,28 @@ def build_triple_barrier_labels(
         # If time barrier hit, label by sign of final return
         if barrier_type == "time":
             final_ret = close[i + horizon] / entry - 1.0 - cost_bps / 10000.0
-            barrier_label = int(np.sign(final_ret)) if abs(final_ret) > cost_bps / 10000.0 else 0
+            barrier_label = (
+                int(np.sign(final_ret)) if abs(final_ret) > cost_bps / 10000.0 else 0
+            )
 
-        labels.append({
-            "timestamp": price_df["timestamp"].iloc[i],
-            "barrier_label": barrier_label,
-            "barrier_type": barrier_type,
-            "barrier_bar": barrier_bar,
-        })
+        labels.append(
+            {
+                "timestamp": price_df["timestamp"].iloc[i],
+                "barrier_label": barrier_label,
+                "barrier_type": barrier_type,
+                "barrier_bar": barrier_bar,
+            }
+        )
 
     # Pad remaining rows with NaN
     for i in range(len(price_df) - horizon, len(price_df)):
-        labels.append({
-            "timestamp": price_df["timestamp"].iloc[i],
-            "barrier_label": np.nan,
-            "barrier_type": None,
-            "barrier_bar": np.nan,
-        })
+        labels.append(
+            {
+                "timestamp": price_df["timestamp"].iloc[i],
+                "barrier_label": np.nan,
+                "barrier_type": None,
+                "barrier_bar": np.nan,
+            }
+        )
 
     return pd.DataFrame(labels)

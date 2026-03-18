@@ -3,6 +3,7 @@
 This module is feature-flagged and only used if torch is available and
 sequence_model.enabled is true in config.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -19,6 +20,7 @@ _TORCH_AVAILABLE = False
 try:
     import torch
     import torch.nn as nn
+
     _TORCH_AVAILABLE = True
 except ImportError:
     pass
@@ -29,12 +31,21 @@ if _TORCH_AVAILABLE:
     class SmallLSTMNet(nn.Module):
         """Small LSTM for sequence classification."""
 
-        def __init__(self, input_dim: int, hidden_dim: int = 64, num_layers: int = 2,
-                     n_classes: int = 3, dropout: float = 0.2):
+        def __init__(
+            self,
+            input_dim: int,
+            hidden_dim: int = 64,
+            num_layers: int = 2,
+            n_classes: int = 3,
+            dropout: float = 0.2,
+        ):
             super().__init__()
             self.lstm = nn.LSTM(
-                input_dim, hidden_dim, num_layers=num_layers,
-                batch_first=True, dropout=dropout,
+                input_dim,
+                hidden_dim,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout,
             )
             self.fc = nn.Sequential(
                 nn.Linear(hidden_dim, 32),
@@ -65,8 +76,12 @@ class SmallLSTMModel(BaseAlphaModel):
             raise ImportError("PyTorch not installed. Install with: pip install torch")
         return None  # Built during fit
 
-    def fit(self, X: pd.DataFrame | np.ndarray, y: np.ndarray,
-            feature_names: list[str] | None = None) -> None:
+    def fit(
+        self,
+        X: pd.DataFrame | np.ndarray,
+        y: np.ndarray,
+        feature_names: list[str] | None = None,
+    ) -> None:
         if not _TORCH_AVAILABLE:
             raise ImportError("PyTorch required for SmallLSTMModel")
 
@@ -91,8 +106,8 @@ class SmallLSTMModel(BaseAlphaModel):
 
         # Map labels to 0-indexed
         unique_labels = sorted(set(y_seq))
-        self._label_map = {l: i for i, l in enumerate(unique_labels)}
-        self._label_inv = {i: l for l, i in self._label_map.items()}
+        self._label_map = {lab: i for i, lab in enumerate(unique_labels)}
+        self._label_inv = {i: lab for lab, i in self._label_map.items()}
         y_mapped = np.array([self._label_map[v] for v in y_seq])
 
         n_features = X_arr.shape[1]
@@ -106,7 +121,9 @@ class SmallLSTMModel(BaseAlphaModel):
         y_tensor = torch.LongTensor(y_mapped)
 
         dataset = torch.utils.data.TensorDataset(X_tensor, y_tensor)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        loader = torch.utils.data.DataLoader(
+            dataset, batch_size=self.batch_size, shuffle=True
+        )
 
         self._model.train()
         for epoch in range(self.n_epochs):
@@ -147,7 +164,9 @@ class SmallLSTMModel(BaseAlphaModel):
             return np.array([self._label_inv.get(i, 0) for i in indices])
         return indices
 
-    def _make_sequences(self, X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _make_sequences(
+        self, X: np.ndarray, y: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Create sliding-window sequences for LSTM input."""
         if len(X) <= self.lookback:
             return np.array([]), np.array([])
@@ -155,6 +174,6 @@ class SmallLSTMModel(BaseAlphaModel):
         sequences = []
         labels = []
         for i in range(self.lookback, len(X)):
-            sequences.append(X[i - self.lookback:i])
+            sequences.append(X[i - self.lookback : i])
             labels.append(y[i])
         return np.array(sequences), np.array(labels)

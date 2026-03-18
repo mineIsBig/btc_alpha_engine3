@@ -1,7 +1,7 @@
 """Account state tracking for risk management."""
+
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from src.common.logging import get_logger
@@ -24,7 +24,9 @@ class AccountState:
         self.net_exposure = 0.0
         self.source = source
 
-    def update_from_positions(self, positions: list[dict[str, Any]], current_prices: dict[str, float]) -> None:
+    def update_from_positions(
+        self, positions: list[dict[str, Any]], current_prices: dict[str, float]
+    ) -> None:
         """Update account state from current positions and prices."""
         total_unrealized = 0.0
         gross = 0.0

@@ -5,6 +5,11 @@ from src.models.regime import RegimeGateModel
 from src.models.registry import ModelArtifactRegistry
 
 __all__ = [
-    "BaseAlphaModel", "LogisticRegressionModel", "RandomForestModel",
-    "LightGBMModel", "XGBoostModel", "RegimeGateModel", "ModelArtifactRegistry",
+    "BaseAlphaModel",
+    "LogisticRegressionModel",
+    "RandomForestModel",
+    "LightGBMModel",
+    "XGBoostModel",
+    "RegimeGateModel",
+    "ModelArtifactRegistry",
 ]

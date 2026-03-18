@@ -1,4 +1,5 @@
 """Portfolio constraints: position limits, exposure limits."""
+
 from __future__ import annotations
 
 from src.common.config import load_yaml_config
@@ -16,7 +17,9 @@ class PortfolioConstraints:
         self.max_gross_exposure_pct = cfg.get("max_gross_exposure_pct", 1.0)
         self.max_leverage = cfg.get("max_leverage", 3.0)
 
-    def check_position_limit(self, target_size_usd: float, equity: float) -> tuple[float, str]:
+    def check_position_limit(
+        self, target_size_usd: float, equity: float
+    ) -> tuple[float, str]:
         """Ensure position doesn't exceed max percentage of equity.
 
         Returns (adjusted_size_usd, reason).
@@ -73,7 +76,9 @@ class PortfolioConstraints:
 
         # Gross exposure
         size, exp_reason = self.check_gross_exposure(
-            current_gross_exposure, abs(size), equity,
+            current_gross_exposure,
+            abs(size),
+            equity,
         )
         if "capped" in exp_reason:
             reason = exp_reason

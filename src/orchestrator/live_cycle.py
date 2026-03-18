@@ -1,4 +1,5 @@
 """Live cycle: hourly trading loop with risk monitoring."""
+
 from __future__ import annotations
 
 from src.common.logging import get_logger, setup_logging
@@ -51,14 +52,17 @@ def run_live_cycle(initial_equity: float = 100000.0) -> None:
         try:
             price = trade_loop.last_price
             if price > 0:
-                equity = trade_loop.router.paper_broker.get_equity({"BTC": price}, trade_loop.cash)
+                equity = trade_loop.router.paper_broker.get_equity(
+                    {"BTC": price}, trade_loop.cash
+                )
                 trade_loop.risk.update_equity(equity, timestamp=None)
 
                 if not trade_loop.risk.can_trade():
                     if settings.flatten_on_breach:
                         trade_loop.emergency.cancel_and_flatten(
                             {"BTC": price},
-                            reason=trade_loop.risk.account.breach_reason or "equity_check_breach",
+                            reason=trade_loop.risk.account.breach_reason
+                            or "equity_check_breach",
                         )
                     trade_loop.risk.persist_state()
 
@@ -82,5 +86,9 @@ def run_live_cycle(initial_equity: float = 100000.0) -> None:
     scheduler.add_daily_reset_job(daily_reset)
     scheduler.add_interval_job(health_check, seconds=300, name="health_check")
 
-    logger.info("live_cycle_starting", paper_mode=settings.paper_mode, live=settings.live_trading_enabled)
+    logger.info(
+        "live_cycle_starting",
+        paper_mode=settings.paper_mode,
+        live=settings.live_trading_enabled,
+    )
     scheduler.start()

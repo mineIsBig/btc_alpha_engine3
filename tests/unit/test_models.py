@@ -1,6 +1,6 @@
 """Tests for model training and prediction."""
+
 import numpy as np
-import pytest
 
 
 class TestBaselineModels:
@@ -13,7 +13,9 @@ class TestBaselineModels:
         X = ds[feat_cols].fillna(0).iloc[:300]
         y = ds["label_4h"].fillna(0).astype(int).values[:300]
 
-        model = LogisticRegressionModel(horizon=4, params={"C": 1.0, "penalty": "l2"}, model_id="test_lr")
+        model = LogisticRegressionModel(
+            horizon=4, params={"C": 1.0, "penalty": "l2"}, model_id="test_lr"
+        )
         model.fit(X, y, feature_names=feat_cols)
         assert model.is_fitted
 
@@ -30,7 +32,9 @@ class TestBaselineModels:
         X = ds[feat_cols].fillna(0).iloc[:300]
         y = ds["label_4h"].fillna(0).astype(int).values[:300]
 
-        model = RandomForestModel(horizon=4, params={"n_estimators": 50}, model_id="test_rf")
+        model = RandomForestModel(
+            horizon=4, params={"n_estimators": 50}, model_id="test_rf"
+        )
         model.fit(X, y, feature_names=feat_cols)
         assert model.is_fitted
 
@@ -48,7 +52,9 @@ class TestBaselineModels:
         X = ds[feat_cols].fillna(0).iloc[:300]
         y = ds["label_4h"].fillna(0).astype(int).values[:300]
 
-        model = LogisticRegressionModel(horizon=4, params={"C": 1.0}, model_id="test_save")
+        model = LogisticRegressionModel(
+            horizon=4, params={"C": 1.0}, model_id="test_save"
+        )
         model.fit(X, y, feature_names=feat_cols)
 
         path = tmp_path / "model.joblib"
@@ -68,7 +74,9 @@ class TestBaselineModels:
         X = ds[feat_cols].fillna(0).iloc[:300]
         y = ds["label_4h"].fillna(0).astype(int).values[:300]
 
-        model = RandomForestModel(horizon=4, params={"n_estimators": 50}, model_id="test_sig")
+        model = RandomForestModel(
+            horizon=4, params={"n_estimators": 50}, model_id="test_sig"
+        )
         model.fit(X, y, feature_names=feat_cols)
 
         sig = model.get_signal(X.iloc[:10])

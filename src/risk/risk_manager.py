@@ -1,4 +1,5 @@
 """Unified risk manager combining all risk components."""
+
 from __future__ import annotations
 
 from typing import Any

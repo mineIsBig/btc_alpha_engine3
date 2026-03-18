@@ -4,17 +4,16 @@ Supports regime-dependent slippage: when price data is provided,
 slippage scales with realized volatility to simulate real spread
 widening during volatile periods.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 
-from src.common.config import load_yaml_config
 from src.common.logging import get_logger
 from src.execution.slippage_model import (
     compute_regime_costs,
-    BASELINE_SLIPPAGE_BPS,
     VOLATILITY_LOOKBACK,
 )
 
@@ -110,12 +109,18 @@ def compute_fold_metrics(
             if price_returns is not None and regime_slippage:
                 lookback_start = max(0, i - VOLATILITY_LOOKBACK)
                 recent_rets = price_returns[lookback_start:i]
-                liq_vol = float(liquidation_volumes[i]) if liquidation_volumes is not None else 0.0
-                effective_slippage, effective_commission, breakdown = compute_regime_costs(
-                    base_slippage_bps=slippage_bps,
-                    base_commission_bps=commission_bps,
-                    recent_returns=recent_rets,
-                    liquidation_volume_usd=liq_vol,
+                liq_vol = (
+                    float(liquidation_volumes[i])
+                    if liquidation_volumes is not None
+                    else 0.0
+                )
+                effective_slippage, effective_commission, breakdown = (
+                    compute_regime_costs(
+                        base_slippage_bps=slippage_bps,
+                        base_commission_bps=commission_bps,
+                        recent_returns=recent_rets,
+                        liquidation_volume_usd=liq_vol,
+                    )
                 )
                 # Track per-trade cost breakdown
                 cost_breakdown["vol_premiums"].append(
@@ -155,8 +160,12 @@ def compute_fold_metrics(
     if nonzero_mask.any():
         metrics["accuracy"] = accuracy_score(y_true, y_pred)
         try:
-            metrics["precision"] = precision_score(y_true, y_pred, average="weighted", zero_division=0)
-            metrics["recall"] = recall_score(y_true, y_pred, average="weighted", zero_division=0)
+            metrics["precision"] = precision_score(
+                y_true, y_pred, average="weighted", zero_division=0
+            )
+            metrics["recall"] = recall_score(
+                y_true, y_pred, average="weighted", zero_division=0
+            )
         except Exception:
             metrics["precision"] = 0.0
             metrics["recall"] = 0.0
@@ -170,7 +179,9 @@ def compute_fold_metrics(
     returns = returns[np.isfinite(returns)]
 
     if len(returns) > 0 and returns.std() > 0:
-        metrics["sharpe_ratio"] = float(np.mean(returns) / np.std(returns) * np.sqrt(8760 / max(len(returns), 1)))
+        metrics["sharpe_ratio"] = float(
+            np.mean(returns) / np.std(returns) * np.sqrt(8760 / max(len(returns), 1))
+        )
     else:
         metrics["sharpe_ratio"] = 0.0
 
@@ -180,7 +191,11 @@ def compute_fold_metrics(
     metrics["max_drawdown"] = float(np.min(drawdown)) if len(drawdown) > 0 else 0.0
 
     # Profit factor
-    metrics["profit_factor"] = gross_profit / gross_loss if gross_loss > 0 else float("inf") if gross_profit > 0 else 0.0
+    metrics["profit_factor"] = (
+        gross_profit / gross_loss
+        if gross_loss > 0
+        else float("inf") if gross_profit > 0 else 0.0
+    )
 
     # Win rate
     metrics["win_rate"] = wins / trades if trades > 0 else 0.0
@@ -196,18 +211,29 @@ def compute_fold_metrics(
 
     metrics["breach_count"] = breach_count
     metrics["breach_rate"] = breach_count / max(n, 1)
-    metrics["avg_slippage_bps"] = total_slippage_bps / trades if trades > 0 else slippage_bps
-    metrics["avg_commission_bps"] = total_commission_bps / trades if trades > 0 else commission_bps
+    metrics["avg_slippage_bps"] = (
+        total_slippage_bps / trades if trades > 0 else slippage_bps
+    )
+    metrics["avg_commission_bps"] = (
+        total_commission_bps / trades if trades > 0 else commission_bps
+    )
     metrics["avg_cost_per_trade_bps"] = (
-        (total_slippage_bps + total_commission_bps) / trades if trades > 0
+        (total_slippage_bps + total_commission_bps) / trades
+        if trades > 0
         else slippage_bps + commission_bps
     )
 
     # Detailed cost breakdown (when regime slippage was active)
     if cost_breakdown["vol_premiums"]:
-        metrics["volatility_cost_premium_bps"] = float(np.mean(cost_breakdown["vol_premiums"]))
-        metrics["liquidation_cost_premium_bps"] = float(np.mean(cost_breakdown["liq_premiums"]))
-        metrics["commission_premium_bps"] = float(np.mean(cost_breakdown["commission_premiums"]))
+        metrics["volatility_cost_premium_bps"] = float(
+            np.mean(cost_breakdown["vol_premiums"])
+        )
+        metrics["liquidation_cost_premium_bps"] = float(
+            np.mean(cost_breakdown["liq_premiums"])
+        )
+        metrics["commission_premium_bps"] = float(
+            np.mean(cost_breakdown["commission_premiums"])
+        )
         metrics["total_cost_premium_bps"] = (
             metrics["volatility_cost_premium_bps"]
             + metrics["liquidation_cost_premium_bps"]
@@ -232,6 +258,7 @@ def compute_rolling_sharpe(
 def compute_information_coefficient(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     """Compute rank IC between true and predicted values."""
     from scipy.stats import spearmanr
+
     mask = np.isfinite(y_true) & np.isfinite(y_pred)
     if mask.sum() < 10:
         return 0.0

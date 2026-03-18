@@ -5,6 +5,7 @@ Constrained search that explores:
 - Hyperparameter tuning
 - Threshold calibration
 """
+
 from __future__ import annotations
 
 import random
@@ -23,7 +24,7 @@ from src.models.baseline import LogisticRegressionModel, RandomForestModel
 from src.models.gradient_boost import LightGBMModel, XGBoostModel
 from src.research.purged_walk_forward import PurgedWalkForward
 from src.research.scoring import compute_fold_metrics
-from src.research.datasets import get_feature_columns, get_label_column
+from src.research.datasets import get_label_column
 
 logger = get_logger(__name__)
 
@@ -38,6 +39,7 @@ MODEL_FACTORIES: dict[str, type[BaseAlphaModel]] = {
 @dataclass
 class Individual:
     """An individual in the evolutionary population."""
+
     gene_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     model_type: str = "lightgbm"
     params: dict[str, Any] = field(default_factory=dict)
@@ -67,10 +69,16 @@ class EvolutionarySearch:
         self.mutation_rate = mutation_rate or cfg.get("mutation_rate", 0.2)
         self.crossover_rate = crossover_rate or cfg.get("crossover_rate", 0.7)
         self.tournament_size = tournament_size or cfg.get("tournament_size", 3)
-        self.feature_min = max(feature_subset_min or cfg.get("feature_subset_min", 5), 3)
-        self.feature_max = min(feature_subset_max or cfg.get("feature_subset_max", 40), len(all_features))
+        self.feature_min = max(
+            feature_subset_min or cfg.get("feature_subset_min", 5), 3
+        )
+        self.feature_max = min(
+            feature_subset_max or cfg.get("feature_subset_max", 40), len(all_features)
+        )
 
-        self.model_registry = load_yaml_config("model_registry.yaml").get("baseline_models", {})
+        self.model_registry = load_yaml_config("model_registry.yaml").get(
+            "baseline_models", {}
+        )
 
     def _random_params(self, model_type: str) -> dict[str, Any]:
         """Sample random hyperparameters for a model type."""
@@ -92,7 +100,9 @@ class EvolutionarySearch:
     def initialize_population(self) -> list[Individual]:
         """Create initial random population."""
         population = []
-        model_types = [k for k, v in self.model_registry.items() if v.get("enabled", True)]
+        model_types = [
+            k for k, v in self.model_registry.items() if v.get("enabled", True)
+        ]
         if not model_types:
             model_types = ["lightgbm"]
 
@@ -135,36 +145,58 @@ class EvolutionarySearch:
         for fold in splitter.split(timestamps):
             try:
                 X_train = dataset.iloc[fold.train_indices][feature_cols].fillna(0)
-                y_train = dataset.iloc[fold.train_indices][label_col].fillna(0).astype(int).values
+                y_train = (
+                    dataset.iloc[fold.train_indices][label_col]
+                    .fillna(0)
+                    .astype(int)
+                    .values
+                )
                 X_test = dataset.iloc[fold.test_indices][feature_cols].fillna(0)
-                y_test = dataset.iloc[fold.test_indices][label_col].fillna(0).astype(int).values
+                y_test = (
+                    dataset.iloc[fold.test_indices][label_col]
+                    .fillna(0)
+                    .astype(int)
+                    .values
+                )
                 fwd_ret = dataset.iloc[fold.test_indices][fwd_ret_col].fillna(0).values
                 test_ts = dataset.iloc[fold.test_indices]["timestamp"].values
 
                 if len(np.unique(y_train)) < 2:
                     continue
 
-                model = model_cls(horizon=horizon, params=individual.params, model_id=individual.gene_id)
+                model = model_cls(
+                    horizon=horizon,
+                    params=individual.params,
+                    model_id=individual.gene_id,
+                )
                 model.fit(X_train, y_train, feature_names=feature_cols)
                 y_pred = model.predict(X_test)
 
                 metrics = compute_fold_metrics(
-                    y_true=y_test, y_pred=y_pred, fwd_returns=fwd_ret,
+                    y_true=y_test,
+                    y_pred=y_pred,
+                    fwd_returns=fwd_ret,
                     timestamps=test_ts,
                 )
                 fold_sharpes.append(metrics.get("sharpe_ratio", 0))
                 fold_metrics_list.append(metrics)
 
             except Exception as e:
-                logger.debug("fold_eval_error", gene_id=individual.gene_id, error=str(e))
+                logger.debug(
+                    "fold_eval_error", gene_id=individual.gene_id, error=str(e)
+                )
                 continue
 
         if fold_sharpes:
             individual.fitness = float(np.mean(fold_sharpes))
             individual.metrics = {
                 "avg_sharpe": float(np.mean(fold_sharpes)),
-                "avg_accuracy": float(np.mean([m.get("accuracy", 0) for m in fold_metrics_list])),
-                "avg_breach_rate": float(np.mean([m.get("breach_rate", 0) for m in fold_metrics_list])),
+                "avg_accuracy": float(
+                    np.mean([m.get("accuracy", 0) for m in fold_metrics_list])
+                ),
+                "avg_breach_rate": float(
+                    np.mean([m.get("breach_rate", 0) for m in fold_metrics_list])
+                ),
                 "n_folds": len(fold_sharpes),
             }
         else:
@@ -174,7 +206,9 @@ class EvolutionarySearch:
 
     def tournament_select(self, population: list[Individual]) -> Individual:
         """Tournament selection."""
-        contestants = random.sample(population, min(self.tournament_size, len(population)))
+        contestants = random.sample(
+            population, min(self.tournament_size, len(population))
+        )
         return max(contestants, key=lambda x: x.fitness)
 
     def crossover(self, parent1: Individual, parent2: Individual) -> Individual:
@@ -187,7 +221,9 @@ class EvolutionarySearch:
         all_keys = set(parent1.params.keys()) | set(parent2.params.keys())
         for key in all_keys:
             if key in parent1.params and key in parent2.params:
-                child.params[key] = random.choice([parent1.params[key], parent2.params[key]])
+                child.params[key] = random.choice(
+                    [parent1.params[key], parent2.params[key]]
+                )
             elif key in parent1.params:
                 child.params[key] = parent1.params[key]
             else:
@@ -216,7 +252,9 @@ class EvolutionarySearch:
             # Remove some
             if len(ind.feature_subset) > self.feature_min + n_change:
                 to_remove = random.sample(ind.feature_subset, n_change)
-                ind.feature_subset = [f for f in ind.feature_subset if f not in to_remove]
+                ind.feature_subset = [
+                    f for f in ind.feature_subset if f not in to_remove
+                ]
 
             # Add some
             available = [f for f in self.all_features if f not in ind.feature_subset]
@@ -242,8 +280,13 @@ class EvolutionarySearch:
             # Ensure purge gap is correct for this horizon
             splitter = splitter.with_horizon(horizon)
 
-        logger.info("evo_search_start", horizon=horizon, pop_size=self.population_size,
-                     gens=self.generations, purge_hours=splitter.purge_hours)
+        logger.info(
+            "evo_search_start",
+            horizon=horizon,
+            pop_size=self.population_size,
+            gens=self.generations,
+            purge_hours=splitter.purge_hours,
+        )
 
         population = self.initialize_population()
 
@@ -273,8 +316,15 @@ class EvolutionarySearch:
 
             population = new_population
             best = max(population, key=lambda x: x.fitness)
-            logger.info("evo_generation", gen=gen + 1, best_fitness=best.fitness, best_id=best.gene_id)
+            logger.info(
+                "evo_generation",
+                gen=gen + 1,
+                best_fitness=best.fitness,
+                best_id=best.gene_id,
+            )
 
         result = sorted(population, key=lambda x: x.fitness, reverse=True)
-        logger.info("evo_search_complete", best_fitness=result[0].fitness if result else 0)
+        logger.info(
+            "evo_search_complete", best_fitness=result[0].fitness if result else 0
+        )
         return result

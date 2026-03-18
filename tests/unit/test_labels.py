@@ -1,12 +1,12 @@
 """Tests for label correctness."""
-import numpy as np
+
 import pandas as pd
-import pytest
 
 
 class TestLabels:
     def test_forward_return_correctness(self, synthetic_price_df):
         from src.labels.labels import build_labels
+
         labels = build_labels(synthetic_price_df, horizons=[1, 4])
 
         # Check fwd_ret_1h: should equal close[i+1]/close[i] - 1
@@ -18,6 +18,7 @@ class TestLabels:
 
     def test_label_ternary(self, synthetic_price_df):
         from src.labels.labels import build_labels
+
         labels = build_labels(synthetic_price_df, horizons=[4])
         valid = labels["label_4h"].dropna()
         unique = set(valid.unique())
@@ -25,6 +26,7 @@ class TestLabels:
 
     def test_mfe_mae_valid(self, synthetic_price_df):
         from src.labels.labels import build_labels
+
         labels = build_labels(synthetic_price_df, horizons=[4])
         mfe = labels["mfe_4h"].dropna()
         mae = labels["mae_4h"].dropna()
@@ -35,6 +37,7 @@ class TestLabels:
 
     def test_no_label_for_last_rows(self, synthetic_price_df):
         from src.labels.labels import build_labels
+
         labels = build_labels(synthetic_price_df, horizons=[24])
         # Last 24 rows should have NaN forward returns
         assert pd.isna(labels["fwd_ret_24h"].iloc[-1])
@@ -42,6 +45,7 @@ class TestLabels:
 
     def test_triple_barrier(self, synthetic_price_df):
         from src.labels.labels import build_triple_barrier_labels
+
         tb = build_triple_barrier_labels(synthetic_price_df, horizon=24)
         valid = tb["barrier_label"].dropna()
         assert set(valid.unique()).issubset({-1, 0, 1})

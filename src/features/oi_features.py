@@ -1,4 +1,5 @@
 """Open Interest derived features."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,7 +13,11 @@ def compute_oi_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = pd.DataFrame(index=df.index)
 
-    oi = df["oi_close"].astype(float) if "oi_close" in df.columns else pd.Series(0.0, index=df.index)
+    oi = (
+        df["oi_close"].astype(float)
+        if "oi_close" in df.columns
+        else pd.Series(0.0, index=df.index)
+    )
 
     # ── Level and change ─────────────────────────────────────
     out["oi_level"] = oi

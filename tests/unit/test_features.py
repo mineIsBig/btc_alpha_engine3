@@ -1,12 +1,12 @@
 """Tests for feature computation and alignment."""
-import numpy as np
+
 import pandas as pd
-import pytest
 
 
 class TestPriceFeatures:
     def test_returns_computed(self, synthetic_price_df):
         from src.features.price_features import compute_price_features
+
         feats = compute_price_features(synthetic_price_df)
         assert "ret_1h" in feats.columns
         assert "ret_4h" in feats.columns
@@ -18,6 +18,7 @@ class TestPriceFeatures:
 
     def test_volatility_computed(self, synthetic_price_df):
         from src.features.price_features import compute_price_features
+
         feats = compute_price_features(synthetic_price_df)
         assert "rvol_24h" in feats.columns
         # Should have values after warmup period
@@ -27,6 +28,7 @@ class TestPriceFeatures:
 
     def test_rsi_range(self, synthetic_price_df):
         from src.features.price_features import compute_price_features
+
         feats = compute_price_features(synthetic_price_df)
         valid_rsi = feats["rsi_14"].dropna()
         assert (valid_rsi >= 0).all()
@@ -36,6 +38,7 @@ class TestPriceFeatures:
 class TestFeatureAlignment:
     def test_feature_pipeline_output_aligned(self, synthetic_raw_data):
         from src.features.feature_pipeline import build_features
+
         feats = build_features(raw_data=synthetic_raw_data)
         assert "timestamp" in feats.columns
         assert len(feats) > 0
@@ -46,6 +49,7 @@ class TestFeatureAlignment:
     def test_no_future_leakage_in_features(self, synthetic_raw_data):
         """Features at time t should only use data from t and earlier."""
         from src.features.price_features import compute_price_features
+
         price = synthetic_raw_data["price"]
         feats = compute_price_features(price)
         # ret_1h at index i uses close[i] and close[i-1], both <= time i
@@ -56,6 +60,7 @@ class TestFeatureAlignment:
 class TestFundingFeatures:
     def test_funding_zscore(self, synthetic_raw_data):
         from src.features.funding_features import compute_funding_features
+
         df = synthetic_raw_data["price"].copy()
         feats = compute_funding_features(df)
         assert "funding_zscore_24h" in feats.columns
@@ -67,6 +72,7 @@ class TestFundingFeatures:
 class TestInteractionFeatures:
     def test_interactions_exist(self, synthetic_raw_data):
         from src.features.feature_pipeline import build_features
+
         feats = build_features(raw_data=synthetic_raw_data)
         interaction_cols = [c for c in feats.columns if "_x_" in c]
         assert len(interaction_cols) > 0

@@ -7,14 +7,14 @@ EVOLUTION: Between iterations, the loop checks if retraining should be triggered
 and runs it inline (blocking). Retraining uses the agent's evolved hyperparameters
 and automatically promotes/retires models.
 """
+
 from __future__ import annotations
 
 import threading
 import time
 import signal as sig_module
-from datetime import datetime
 
-from src.common.config import get_settings, load_yaml_config
+from src.common.config import get_settings
 from src.common.logging import get_logger, setup_logging
 from src.agent.alpha_agent import AlphaAgent
 from src.agent.signal_output import SignalOutput
@@ -56,8 +56,12 @@ class AgentLoop:
 
     def run(self) -> None:
         """Run the perpetual loop. Blocks until shutdown."""
-        logger.info("agent_loop_starting", delay=self.delay_seconds, equity=self.equity,
-                     evolution_version=self.agent.evolution_config.version)
+        logger.info(
+            "agent_loop_starting",
+            delay=self.delay_seconds,
+            equity=self.equity,
+            evolution_version=self.agent.evolution_config.version,
+        )
 
         while self._running:
             iteration_start = time.monotonic()
@@ -90,8 +94,10 @@ class AgentLoop:
                 logger.info("signal_generated", summary=signal.to_summary())
                 print("\n" + "=" * 60)
                 print(signal.to_summary())
-                print(f"  Evolution: v{self.agent.evolution_config.version} | "
-                      f"Retrain pending: {self.agent.state.retrain_pending}")
+                print(
+                    f"  Evolution: v{self.agent.evolution_config.version} | "
+                    f"Retrain pending: {self.agent.state.retrain_pending}"
+                )
                 print("=" * 60 + "\n")
 
                 # ═══ CHECK RETRAIN TRIGGER ═══
@@ -111,8 +117,11 @@ class AgentLoop:
             while self._running and (time.monotonic() - sleep_start) < sleep_time:
                 time.sleep(min(5.0, sleep_time))
 
-        logger.info("agent_loop_stopped", total_iterations=self.agent.state.iteration,
-                     evolution_version=self.agent.evolution_config.version)
+        logger.info(
+            "agent_loop_stopped",
+            total_iterations=self.agent.state.iteration,
+            evolution_version=self.agent.evolution_config.version,
+        )
 
     def _maybe_retrain(self) -> None:
         """Check if retraining should fire and execute it."""
@@ -140,10 +149,12 @@ class AgentLoop:
         with self._retrain_lock:
             try:
                 result = self.agent.run_retrain()
-                logger.info("retrain_completed",
-                           candidates=result.get("candidates", 0),
-                           promoted=result.get("promoted", 0),
-                           retired=result.get("retired", 0))
+                logger.info(
+                    "retrain_completed",
+                    candidates=result.get("candidates", 0),
+                    promoted=result.get("promoted", 0),
+                    retired=result.get("retired", 0),
+                )
             except Exception as e:
                 logger.error("retrain_failed", error=str(e))
 
@@ -151,6 +162,7 @@ class AgentLoop:
         """Get current BTC price."""
         try:
             from src.data.hyperliquid_client import HyperliquidClient
+
             client = HyperliquidClient()
             price = client.get_mid_price("BTC")
             client.close()

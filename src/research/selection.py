@@ -6,6 +6,7 @@ combinations by:
 2. Requiring models to pass on consecutive walk-forward windows
 3. Per-fold consistency checks (no single fold should be catastrophic)
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -36,9 +37,12 @@ def _bonferroni_sharpe(base_sharpe: float, n_comparisons: int) -> float:
         return base_sharpe
     adjustment = 0.1 * np.log(n_comparisons)
     adjusted = base_sharpe + adjustment
-    logger.debug("sharpe_threshold_adjusted",
-                 base=base_sharpe, n_comparisons=n_comparisons,
-                 adjusted=round(adjusted, 3))
+    logger.debug(
+        "sharpe_threshold_adjusted",
+        base=base_sharpe,
+        n_comparisons=n_comparisons,
+        adjusted=round(adjusted, 3),
+    )
     return adjusted
 
 
@@ -58,9 +62,12 @@ def _bonferroni_accuracy(base_accuracy: float, n_comparisons: int) -> float:
         return base_accuracy
     adjustment = (1.0 - base_accuracy) * 0.05 * np.log(n_comparisons)
     adjusted = base_accuracy + adjustment
-    logger.debug("accuracy_threshold_adjusted",
-                 base=base_accuracy, n_comparisons=n_comparisons,
-                 adjusted=round(adjusted, 4))
+    logger.debug(
+        "accuracy_threshold_adjusted",
+        base=base_accuracy,
+        n_comparisons=n_comparisons,
+        adjusted=round(adjusted, 4),
+    )
     return adjusted
 
 
@@ -160,9 +167,15 @@ def select_candidates(
     cfg = load_yaml_config("model_registry.yaml").get("promotion", {})
     min_oos_sharpe = min_oos_sharpe or cfg.get("min_oos_sharpe", 0.5)
     min_oos_accuracy = min_oos_accuracy or cfg.get("min_oos_accuracy", 0.52)
-    max_breach_rate = max_breach_rate if max_breach_rate is not None else cfg.get("max_breach_rate", 0.0)
+    max_breach_rate = (
+        max_breach_rate
+        if max_breach_rate is not None
+        else cfg.get("max_breach_rate", 0.0)
+    )
     min_folds = min_folds or cfg.get("min_folds", 3)
-    min_consecutive_windows = min_consecutive_windows or cfg.get("min_consecutive_windows", 3)
+    min_consecutive_windows = min_consecutive_windows or cfg.get(
+        "min_consecutive_windows", 3
+    )
 
     # Adjust thresholds for multiple comparisons
     n_comparisons = len(fold_results)
@@ -179,7 +192,9 @@ def select_candidates(
         folds = result.get("folds", [])
 
         if len(folds) < min_folds:
-            logger.debug("skipped_insufficient_folds", model_id=model_id, n_folds=len(folds))
+            logger.debug(
+                "skipped_insufficient_folds", model_id=model_id, n_folds=len(folds)
+            )
             continue
 
         avg_sharpe = np.mean([f.get("sharpe_ratio", 0) for f in folds])
@@ -188,31 +203,51 @@ def select_candidates(
 
         # Layer 1: Aggregate threshold check (with adjusted Sharpe)
         if avg_sharpe < adjusted_sharpe:
-            logger.debug("skipped_low_sharpe", model_id=model_id,
-                        sharpe=avg_sharpe, threshold=adjusted_sharpe)
+            logger.debug(
+                "skipped_low_sharpe",
+                model_id=model_id,
+                sharpe=avg_sharpe,
+                threshold=adjusted_sharpe,
+            )
             continue
         if avg_accuracy < adjusted_accuracy:
-            logger.debug("skipped_low_accuracy", model_id=model_id,
-                        acc=avg_accuracy, threshold=adjusted_accuracy)
+            logger.debug(
+                "skipped_low_accuracy",
+                model_id=model_id,
+                acc=avg_accuracy,
+                threshold=adjusted_accuracy,
+            )
             continue
         if avg_breach_rate > max_breach_rate:
-            logger.debug("skipped_high_breach", model_id=model_id, breach=avg_breach_rate)
+            logger.debug(
+                "skipped_high_breach", model_id=model_id, breach=avg_breach_rate
+            )
             continue
 
         # Layer 2: Consecutive window requirement
         passes_consecutive, longest_streak = _check_consecutive_windows(
-            folds, min_oos_sharpe, min_oos_accuracy, min_consecutive_windows,
+            folds,
+            min_oos_sharpe,
+            min_oos_accuracy,
+            min_consecutive_windows,
         )
         if not passes_consecutive:
-            logger.debug("skipped_no_consecutive_windows", model_id=model_id,
-                        longest_streak=longest_streak, required=min_consecutive_windows)
+            logger.debug(
+                "skipped_no_consecutive_windows",
+                model_id=model_id,
+                longest_streak=longest_streak,
+                required=min_consecutive_windows,
+            )
             continue
 
         # Layer 3: No catastrophic folds
         passes_catastrophic, bad_folds = _check_no_catastrophic_folds(folds)
         if not passes_catastrophic:
-            logger.debug("skipped_catastrophic_folds", model_id=model_id,
-                        catastrophic_fold_indices=bad_folds)
+            logger.debug(
+                "skipped_catastrophic_folds",
+                model_id=model_id,
+                catastrophic_fold_indices=bad_folds,
+            )
             continue
 
         result["avg_sharpe"] = avg_sharpe
@@ -224,13 +259,18 @@ def select_candidates(
         candidates.append(result)
 
     candidates.sort(key=lambda x: x.get("avg_sharpe", 0), reverse=True)
-    logger.info("candidates_selected",
-                total=len(fold_results), passed=len(candidates),
-                sharpe_threshold=round(adjusted_sharpe, 3),
-                n_comparisons=n_comparisons)
+    logger.info(
+        "candidates_selected",
+        total=len(fold_results),
+        passed=len(candidates),
+        sharpe_threshold=round(adjusted_sharpe, 3),
+        n_comparisons=n_comparisons,
+    )
     return candidates
 
 
-def rank_models(candidates: list[dict[str, Any]], metric: str = "avg_sharpe") -> list[dict[str, Any]]:
+def rank_models(
+    candidates: list[dict[str, Any]], metric: str = "avg_sharpe"
+) -> list[dict[str, Any]]:
     """Rank candidate models by a metric."""
     return sorted(candidates, key=lambda x: x.get(metric, 0), reverse=True)

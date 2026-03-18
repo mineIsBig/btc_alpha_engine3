@@ -14,6 +14,7 @@ Architecture:
 - Execute training remotely
 - Download trained model artifacts
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,9 @@ class LiumClient:
         self.api_key = api_key or getattr(settings, "lium_api_key", "")
         self._pods: dict[str, LiumPod] = {}
 
-    def _run_cli(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    def _run_cli(
+        self, args: list[str], check: bool = True
+    ) -> subprocess.CompletedProcess:
         """Run a lium CLI command."""
         cmd = ["lium"] + args
         logger.debug("lium_cli", cmd=" ".join(cmd))
@@ -61,7 +64,10 @@ class LiumClient:
                 logger.error("lium_cli_error", stderr=result.stderr, cmd=" ".join(cmd))
             return result
         except FileNotFoundError:
-            logger.error("lium_cli_not_found", msg="Install with: pip install lium.io && lium init")
+            logger.error(
+                "lium_cli_not_found",
+                msg="Install with: pip install lium.io && lium init",
+            )
             raise RuntimeError("lium CLI not installed")
 
     def list_available_gpus(self, gpu_type: str | None = None) -> list[dict[str, Any]]:
@@ -94,7 +100,16 @@ class LiumClient:
             gpu_count: number of GPUs
             ttl: auto-termination time (e.g. "6h", "12h")
         """
-        args = ["up", "--gpu", gpu_type, "--count", str(gpu_count), "--name", name, "--yes"]
+        args = [
+            "up",
+            "--gpu",
+            gpu_type,
+            "--count",
+            str(gpu_count),
+            "--name",
+            name,
+            "--yes",
+        ]
         if ttl:
             args.extend(["--ttl", ttl])
 
@@ -111,7 +126,9 @@ class LiumClient:
 
         return pod
 
-    def upload_file(self, pod_name: str, local_path: str, remote_path: str = "/root/") -> bool:
+    def upload_file(
+        self, pod_name: str, local_path: str, remote_path: str = "/root/"
+    ) -> bool:
         """Upload a file to a pod."""
         result = self._run_cli(["scp", pod_name, local_path, remote_path])
         return result.returncode == 0
@@ -187,12 +204,17 @@ class LiumClient:
             script_path = f.name
 
         try:
-            pod = self.create_pod(name=pod_name, gpu_type=gpu_type, gpu_count=n_gpus, ttl=ttl)
+            pod = self.create_pod(
+                name=pod_name, gpu_type=gpu_type, gpu_count=n_gpus, ttl=ttl
+            )
             if pod.status != "running":
                 return {"status": "failed", "error": "Pod creation failed"}
 
             # Install base deps
-            self.execute(pod_name, "pip install pandas numpy scikit-learn lightgbm xgboost joblib")
+            self.execute(
+                pod_name,
+                "pip install pandas numpy scikit-learn lightgbm xgboost joblib",
+            )
 
             # Upload and run
             self.upload_file(pod_name, script_path, "/root/train.py")
