@@ -53,7 +53,6 @@ def run_research_cycle(
         return []
 
     feature_cols = get_feature_columns(dataset)
-    splitter = PurgedWalkForward.from_config()
     registry = ModelArtifactRegistry()
 
     all_results = []
@@ -66,9 +65,14 @@ def run_research_cycle(
             logger.warning("missing_label", horizon=horizon)
             continue
 
+        # Create a horizon-specific splitter so purge gap scales with
+        # label horizon (e.g. 72h purge for 24h labels instead of 48h)
+        splitter = PurgedWalkForward.from_config(horizon=horizon)
+
         for model_name, model_cls, default_params in MODEL_CONFIGS:
             model_id = f"{model_name}_h{horizon}"
-            logger.info("walk_forward_start", model_id=model_id)
+            logger.info("walk_forward_start", model_id=model_id,
+                        purge_hours=splitter.purge_hours)
 
             fold_metrics = []
             for fold in splitter.split(dataset["timestamp"]):

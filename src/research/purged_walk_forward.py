@@ -2,6 +2,7 @@
 
 Strict rolling train/test splits with:
 - Purge gap between train end and test start to prevent leakage
+- Dynamic purge: scales with label horizon so purge >= horizon
 - Embargo gap after test end before next train can start
 - Configurable window sizes
 """
@@ -19,6 +20,33 @@ from src.common.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Minimum purge gap per label horizon (hours).
+# Purge must be >= label horizon to prevent information leakage from
+# forward-looking labels bleeding into the train set.
+# Formula: max(base_purge, horizon * multiplier)
+PURGE_HORIZON_MULTIPLIER = 3.0  # purge = 3x the label horizon
+MIN_PURGE_HOURS = 48            # absolute floor regardless of horizon
+
+
+def compute_purge_hours(base_purge: int, horizon: int | None = None) -> int:
+    """Compute effective purge gap based on label horizon.
+
+    For short horizons (1-4h), the base purge (48h) is already sufficient.
+    For longer horizons (12-24h), purge scales to 3x the horizon to ensure
+    no forward-looking label information leaks into training data.
+
+    Args:
+        base_purge: configured base purge gap in hours
+        horizon: label horizon in hours (None = use base_purge as-is)
+
+    Returns:
+        Effective purge hours, guaranteed >= MIN_PURGE_HOURS
+    """
+    if horizon is None:
+        return max(base_purge, MIN_PURGE_HOURS)
+    horizon_purge = int(horizon * PURGE_HORIZON_MULTIPLIER)
+    return max(base_purge, horizon_purge, MIN_PURGE_HOURS)
+
 
 @dataclass
 class WalkForwardFold:
@@ -33,7 +61,7 @@ class WalkForwardFold:
 
 
 class PurgedWalkForward:
-    """Purged walk-forward splitter."""
+    """Purged walk-forward splitter with horizon-aware purge gaps."""
 
     def __init__(
         self,
@@ -44,18 +72,31 @@ class PurgedWalkForward:
         step_days: int = 14,
         min_train_samples: int = 1000,
         max_folds: int = 50,
+        horizon: int | None = None,
     ):
         self.train_days = train_days
         self.test_days = test_days
-        self.purge_hours = purge_hours
+        self.base_purge_hours = purge_hours
         self.embargo_hours = embargo_hours
         self.step_days = step_days
         self.min_train_samples = min_train_samples
         self.max_folds = max_folds
+        self.horizon = horizon
+        self.purge_hours = compute_purge_hours(purge_hours, horizon)
+
+        if self.purge_hours != purge_hours:
+            logger.info("purge_gap_scaled",
+                        base=purge_hours, effective=self.purge_hours,
+                        horizon=horizon, reason="purge >= horizon * 3")
 
     @classmethod
-    def from_config(cls) -> PurgedWalkForward:
-        """Create from walk_forward.yaml config."""
+    def from_config(cls, horizon: int | None = None) -> PurgedWalkForward:
+        """Create from walk_forward.yaml config.
+
+        Args:
+            horizon: label horizon in hours. If provided, purge gap is
+                     dynamically scaled to prevent leakage.
+        """
         cfg = load_yaml_config("walk_forward.yaml")["walk_forward"]
         return cls(
             train_days=cfg["train_days"],
@@ -65,6 +106,7 @@ class PurgedWalkForward:
             step_days=cfg["step_days"],
             min_train_samples=cfg["min_train_samples"],
             max_folds=cfg["max_folds"],
+            horizon=horizon,
         )
 
     def split(self, timestamps: pd.Series | np.ndarray) -> Generator[WalkForwardFold, None, None]:
@@ -132,6 +174,24 @@ class PurgedWalkForward:
             fold_idx += 1
             # Step forward: next train starts after embargo from test end
             train_start += step_td
+
+    def with_horizon(self, horizon: int) -> PurgedWalkForward:
+        """Return a new splitter reconfigured for a different horizon.
+
+        Preserves all settings but recomputes the purge gap for the
+        given horizon. Useful when iterating over multiple horizons
+        without re-reading config each time.
+        """
+        return PurgedWalkForward(
+            train_days=self.train_days,
+            test_days=self.test_days,
+            purge_hours=self.base_purge_hours,
+            embargo_hours=self.embargo_hours,
+            step_days=self.step_days,
+            min_train_samples=self.min_train_samples,
+            max_folds=self.max_folds,
+            horizon=horizon,
+        )
 
     def get_n_folds(self, timestamps: pd.Series | np.ndarray) -> int:
         """Count the number of folds without generating them."""

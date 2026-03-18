@@ -1,4 +1,4 @@
-"""Autonomous Alpha Agent — Arbos-inspired ralph-loop.
+"""Autonomous Alpha Agent — Arbos-inspired ralph-loop with guardrails.
 
 Goal: design and evolve a system S that discovers profitable strategies
 in changing environments.
@@ -8,6 +8,16 @@ Every directional signal is tracked forward in time. The scorecard checks
 whether price hit TP, SL, or expired — computing REAL returns, Sharpe, and
 drawdown from actual signal outcomes. The agent reasons about THIS data,
 not just historical backtest metrics.
+
+GUARDRAILS:
+1. Schema validation: every LLM response is validated against Pydantic schemas.
+   Malformed responses fail gracefully to "no change".
+2. Scope enforcement: the agent cannot modify risk limits or infrastructure.
+   Only feature/model/hyperparameter/ensemble changes are allowed.
+3. Validation gate: proposed changes are checked against recent performance.
+   In emergency states (deep drawdown, crashed Sharpe), only conservative
+   modifications are allowed.
+4. Changelog: every change is recorded with rollback capability.
 """
 from __future__ import annotations
 
@@ -21,6 +31,15 @@ from src.common.logging import get_logger
 from src.common.time_utils import utc_now
 from src.agent.signal_output import SignalOutput, AgentState
 from src.agent.scorecard import SignalScorecard
+from src.agent.guardrails import (
+    validate_design_response,
+    validate_reflect_response,
+    filter_changes_by_scope,
+    validation_gate,
+    AgentChangelog,
+    DesignResponse,
+    ReflectResponse,
+)
 from src.compute.dispatcher import ComputeDispatcher
 
 logger = get_logger(__name__)
@@ -35,16 +54,22 @@ The signal scorecard tracks every signal you issue, checks whether price hit
 your TP or SL, and computes actual Sharpe, accuracy, PnL. This is ground truth.
 Reason about THIS data, not hypotheticals.
 
+SCOPE CONSTRAINTS:
+You may propose changes to: features, models, hyperparameters, ensemble logic.
+You may NOT propose changes to: risk limits, daily loss limits, position size caps,
+kill switch thresholds, or infrastructure settings. These are operator-controlled.
+
 Be proactive. Be specific. Never stop improving."""
 
 
 class AlphaAgent:
-    """Autonomous alpha research agent with Arbos-style ralph-loop."""
+    """Autonomous alpha research agent with Arbos-style ralph-loop and guardrails."""
 
     def __init__(self):
         self.compute = ComputeDispatcher()
         self.state = self._load_state()
         self.scorecard = SignalScorecard()
+        self.changelog = AgentChangelog()
 
     def _load_state(self) -> AgentState:
         if STATE_PATH.exists():
@@ -60,7 +85,12 @@ class AlphaAgent:
         with open(STATE_PATH, "w") as f:
             f.write(self.state.model_dump_json(indent=2))
 
-    def design_or_modify(self, performance: dict[str, Any]) -> dict[str, Any]:
+    def design_or_modify(self, performance: dict[str, Any]) -> DesignResponse:
+        """LLM designs or modifies the system based on real performance.
+
+        Returns a validated DesignResponse. Malformed LLM output falls back
+        to safe defaults (no changes).
+        """
         is_profitable, verdict = self.scorecard.is_profitable(min_signals=10)
         prompt = f"""Iteration {self.state.iteration}. Analyze REAL signal performance and propose improvements.
 
@@ -74,6 +104,9 @@ AGENT STATE:
 - Cumulative PnL: {self.state.cumulative_pnl:+.2f}
 - Weaknesses: {json.dumps(self.state.weaknesses[-5:])}
 
+SCOPE: You may propose changes to features, models, hyperparameters, or ensemble logic.
+You may NOT propose changes to risk limits, position size caps, or infrastructure.
+
 Focus on SCORECARD METRICS (real outcomes) over backtest metrics.
 Respond with JSON:
 {{
@@ -81,15 +114,22 @@ Respond with JSON:
     "is_system_profitable": {str(is_profitable).lower()},
     "weaknesses_found": ["specific weaknesses"],
     "proposed_changes": [
-        {{"type": "feature|model|hyperparameter|risk|ensemble", "action": "add|remove|modify", "detail": "specific change"}}
+        {{"type": "feature|model|hyperparameter|ensemble", "action": "add|remove|modify", "detail": "specific change"}}
     ],
     "priority": "most important fix"
 }}"""
         try:
-            return self.compute.agent_inference_json(prompt, system=SYSTEM_PROMPT)
+            raw = self.compute.agent_inference_json(prompt, system=SYSTEM_PROMPT)
+            validated = validate_design_response(raw)
+            if validated.analysis == "LLM response failed validation":
+                logger.warning("design_llm_response_invalid", raw_type=type(raw).__name__)
+            return validated
+        except json.JSONDecodeError as e:
+            logger.error("design_json_parse_failed", error=str(e))
+            return DesignResponse(analysis="LLM returned invalid JSON")
         except Exception as e:
             logger.error("design_phase_failed", error=str(e))
-            return {"analysis": "LLM unavailable", "weaknesses_found": [], "proposed_changes": [], "priority": "restore inference"}
+            return DesignResponse(analysis=f"LLM unavailable: {e}")
 
     def run_system(self, features_df=None, raw_data: dict | None = None) -> dict[str, Any]:
         from src.features.feature_pipeline import build_features
@@ -178,7 +218,8 @@ Respond with JSON:
         return {"scorecard_metrics": scorecard_metrics, "walk_forward_metrics": wf_metrics,
                 "n_models": run_results.get("metrics", {}).get("n_models", 0), **wf_metrics}
 
-    def reflect(self, performance: dict[str, Any]) -> dict[str, Any]:
+    def reflect(self, performance: dict[str, Any]) -> ReflectResponse:
+        """LLM reflects on performance. Returns validated ReflectResponse."""
         sc = performance.get("scorecard_metrics", {})
         prompt = f"""Reflecting on iteration {self.state.iteration}.
 
@@ -201,24 +242,101 @@ Be honest. Respond with JSON:
     "next_priorities": ["by impact"]
 }}"""
         try:
-            return self.compute.agent_inference_json(prompt, system=SYSTEM_PROMPT)
+            raw = self.compute.agent_inference_json(prompt, system=SYSTEM_PROMPT)
+            validated = validate_reflect_response(raw)
+            if validated.reflection == "LLM response failed validation":
+                logger.warning("reflect_llm_response_invalid")
+            return validated
+        except json.JSONDecodeError as e:
+            logger.error("reflect_json_parse_failed", error=str(e))
+            return ReflectResponse(reflection="LLM returned invalid JSON")
         except Exception as e:
             logger.error("reflect_failed", error=str(e))
-            return {"reflection": "LLM unavailable", "is_actually_profitable": False,
-                    "weaknesses": [], "regime_assessment": "unknown", "tp_sl_assessment": "unknown", "next_priorities": []}
+            return ReflectResponse(reflection=f"LLM unavailable: {e}")
 
-    def improve(self, design: dict, reflection: dict) -> list[str]:
+    def improve(self, design: DesignResponse, reflection: ReflectResponse,
+                scorecard_metrics: dict[str, Any]) -> list[str]:
+        """Apply improvements with full guardrails pipeline.
+
+        Pipeline:
+        1. Take top 3 proposed changes from design
+        2. Validate each change against scope constraints (block risk changes)
+        3. Run through validation gate (check system health)
+        4. Record approved changes in changelog
+        5. Store in agent state for next iteration's context
+        """
+        proposed = design.proposed_changes[:3]
+
+        if not proposed:
+            logger.info("improve_no_changes_proposed")
+            return []
+
+        # ── Step 1: Scope enforcement ────────────────────────
+        scope_approved, scope_rejections = filter_changes_by_scope(proposed)
+
+        for rej in scope_rejections:
+            self.changelog.record(
+                iteration=self.state.iteration,
+                change=next(c for c in proposed if c.detail[:100] == rej["detail"]),
+                status="rejected",
+                validation_result=f"Scope violation: {rej['reason']}",
+                scorecard_snapshot=scorecard_metrics,
+            )
+
+        if not scope_approved:
+            logger.info("improve_all_changes_rejected_by_scope", n_rejected=len(scope_rejections))
+            self._update_state_from_reflection(reflection)
+            return []
+
+        # ── Step 2: Validation gate ──────────────────────────
+        gate_approved, gate_rejections = validation_gate(scope_approved, scorecard_metrics)
+
+        for rej in gate_rejections:
+            matching = [c for c in scope_approved if c.detail[:100] == rej["detail"]]
+            if matching:
+                self.changelog.record(
+                    iteration=self.state.iteration,
+                    change=matching[0],
+                    status="failed_validation",
+                    validation_result=f"Gate rejection: {rej['reason']}",
+                    scorecard_snapshot=scorecard_metrics,
+                )
+
+        # ── Step 3: Record approved changes in changelog ─────
         improvements = []
-        for change in design.get("proposed_changes", [])[:3]:
-            desc = f"{change.get('type', '')}/{change.get('action', '')}: {change.get('detail', '')}"
+        for change in gate_approved:
+            desc = f"{change.type}/{change.action}: {change.detail}"
             improvements.append(desc)
+
+            self.changelog.record(
+                iteration=self.state.iteration,
+                change=change,
+                status="applied",
+                validation_result="Passed scope + validation gate",
+                scorecard_snapshot=scorecard_metrics,
+            )
             logger.info("improvement_applied", change=desc)
-        self.state.weaknesses = reflection.get("weaknesses", [])[:10]
+
+        self.changelog.save()
+
+        # ── Step 4: Update agent state ───────────────────────
+        self._update_state_from_reflection(reflection)
         self.state.improvements_applied.extend(improvements)
         if len(self.state.improvements_applied) > 50:
             self.state.improvements_applied = self.state.improvements_applied[-50:]
-        self.state.last_reflection = reflection.get("reflection", "")
+
+        logger.info("improve_summary",
+                     proposed=len(proposed),
+                     scope_rejected=len(scope_rejections),
+                     gate_rejected=len(gate_rejections),
+                     applied=len(improvements))
+
         return improvements
+
+    def _update_state_from_reflection(self, reflection: ReflectResponse) -> None:
+        """Update agent state with reflection results."""
+        self.state.weaknesses = reflection.weaknesses[:10]
+        self.state.last_reflection = reflection.reflection
 
     def generate_signal(self, run_results: dict[str, Any], performance: dict[str, Any],
                         current_price: float = 0.0, equity: float = 100000.0) -> SignalOutput:
@@ -260,11 +378,17 @@ Be honest. Respond with JSON:
 
     def iterate(self, current_price: float = 0.0, equity: float = 100000.0,
                 raw_data: dict | None = None) -> SignalOutput:
-        """Run one full ralph-loop iteration.
+        """Run one full ralph-loop iteration with guardrails.
 
         The critical difference: every iteration starts by SCORING previous
         signals against actual price, and the entire reasoning chain operates
         on real performance data from the scorecard.
+
+        Guardrails applied:
+        - LLM responses validated against Pydantic schemas
+        - Proposed changes filtered by scope (risk changes blocked)
+        - Validation gate checks system health before allowing changes
+        - All changes recorded in changelog with rollback capability
         """
         self.state.iteration += 1
         logger.info("agent_iteration_start", iteration=self.state.iteration)
@@ -281,15 +405,26 @@ Be honest. Respond with JSON:
             is_profitable, verdict = self.scorecard.is_profitable(min_signals=10)
             logger.info("profitability_check", profitable=is_profitable, verdict=verdict)
 
-            prev_perf = {"scorecard_metrics": self.scorecard.compute_metrics(),
+            scorecard_metrics = self.scorecard.compute_metrics()
+            prev_perf = {"scorecard_metrics": scorecard_metrics,
                         "is_profitable": is_profitable, "verdict": verdict, "iteration": self.state.iteration}
 
+            # ═══ DESIGN (with schema validation) ═══
             design = self.design_or_modify(prev_perf)
-            run_results = self.run_system(raw_data=raw_data)
-            performance = self.measure(run_results, current_price)
-            reflection = self.reflect(performance)
-            improvements = self.improve(design, reflection)
 
+            # ═══ RUN SYSTEM ═══
+            run_results = self.run_system(raw_data=raw_data)
+
+            # ═══ MEASURE ═══
+            performance = self.measure(run_results, current_price)
+
+            # ═══ REFLECT (with schema validation) ═══
+            reflection = self.reflect(performance)
+
+            # ═══ IMPROVE (with scope + validation gate + changelog) ═══
+            improvements = self.improve(design, reflection, performance.get("scorecard_metrics", {}))
+
+            # ═══ GENERATE SIGNAL ═══
             signal = self.generate_signal(run_results, performance, current_price, equity)
             self.state.total_signals += 1
             self.state.last_signal = signal
@@ -300,7 +435,8 @@ Be honest. Respond with JSON:
             self._save_state()
 
             logger.info("agent_iteration_complete", iteration=self.state.iteration,
-                       direction=signal.direction, profitable=is_profitable)
+                       direction=signal.direction, profitable=is_profitable,
+                       changes_applied=len(improvements))
             return signal
 
         except Exception as e:
