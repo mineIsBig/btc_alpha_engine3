@@ -103,7 +103,7 @@ def get_session_factory() -> sessionmaker:
 
 def get_session() -> Session:
     """Create a new session."""
-    return get_session_factory()()
+    return get_session_factory()()  # type: ignore[no-any-return]
 
 
 @contextmanager

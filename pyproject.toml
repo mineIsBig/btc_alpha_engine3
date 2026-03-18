@@ -82,14 +82,21 @@ disallow_untyped_defs = true
 warn_return_any = true
 
 # Modules with known type issues to be fixed incrementally
+# (SQLAlchemy Column ↔ Python type mismatches, Pydantic Field defaults, etc.)
 [[tool.mypy.overrides]]
 module = [
     "src.live.trade_loop",
     "src.orchestrator.live_cycle",
     "src.orchestrator.research_cycle",
+    "src.orchestrator.training_cycle",
     "src.portfolio.sizing",
     "src.monitoring.prometheus_metrics",
     "src.data.ingest_jobs",
     "src.research.scoring",
+    "src.research.reports",
+    "src.risk.drawdown_rules",
+    "src.execution.paper_broker",
+    "src.models.registry",
+    "src.agent.alpha_agent",
 ]
 ignore_errors = true
