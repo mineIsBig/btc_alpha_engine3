@@ -2,15 +2,10 @@
 walk_forward:
   train_days: 90
   test_days: 14
-  # Dynamic purge gap configuration
-  # Purge gap is computed as max(min_purge_hours, horizon * purge_horizon_multiplier)
-  # This prevents information leakage for longer prediction horizons
-  purge_hours: null              # Set to null for dynamic, or fixed value (e.g., 48)
-  purge_horizon_multiplier: 3.0  # Purge gap = horizon * multiplier (e.g., 24h * 3 = 72h)
-  min_purge_hours: 48            # Minimum purge gap regardless of horizon
-  embargo_hours: 24              # gap after test end before next train start
+  purge_hours: 48       # gap between train end and test start
+  embargo_hours: 24     # gap after test end before next train start
   min_train_samples: 1000
-  step_days: 14                  # roll forward by this many days each fold
+  step_days: 14         # roll forward by this many days each fold
   max_folds: 50
 
 scoring:

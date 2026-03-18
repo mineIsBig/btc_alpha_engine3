@@ -7,7 +7,6 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 from src.common.config import load_yaml_config
 from src.common.logging import get_logger
-from src.execution.slippage_model import RegimeAwareCostModel
 
 logger = get_logger(__name__)
 
@@ -23,48 +22,13 @@ def compute_fold_metrics(
     daily_loss_limit: float = 0.05,
     eod_trailing_limit: float = 0.05,
     timestamps: np.ndarray | None = None,
-    regime_labels: np.ndarray | None = None,
-    volatility_zscores: np.ndarray | None = None,
-    liquidation_zscores: np.ndarray | None = None,
-    use_regime_costs: bool = False,
 ) -> dict[str, float]:
     """Compute comprehensive metrics for a walk-forward fold.
 
     Simulates PnL with risk constraints and computes performance metrics.
-    Supports regime-aware cost modeling for realistic performance estimates.
-    
-    Args:
-        y_true: True labels
-        y_pred: Predicted labels
-        fwd_returns: Forward returns for each prediction
-        prices: Price series (optional)
-        initial_equity: Starting equity for simulation
-        slippage_bps: Base slippage in basis points
-        commission_bps: Base commission in basis points
-        daily_loss_limit: Maximum daily loss as fraction of equity
-        eod_trailing_limit: EOD trailing stop as fraction of equity
-        timestamps: Timestamps for each prediction
-        regime_labels: Market regime labels for each prediction
-        volatility_zscores: Realized volatility z-scores
-        liquidation_zscores: Liquidation intensity z-scores
-        use_regime_costs: If True, apply regime-dependent cost scaling
     """
-    from src.execution.slippage_model import RegimeAwareCostModel
-    
     n = len(y_true)
-    cost_model = RegimeAwareCostModel(
-        base_slippage_bps=slippage_bps,
-        base_commission_bps=commission_bps,
-    )
-    
-    # Track cost statistics for reporting
-    total_costs = []
-    cost_breakdown = {
-        "base_costs": [],
-        "volatility_premium": [],
-        "liquidation_premium": [],
-        "regime_premium": [],
-    }
+    cost_per_trade = (slippage_bps + commission_bps) / 10000.0
 
     # PnL simulation
     equity = initial_equity
@@ -111,38 +75,6 @@ def compute_fold_metrics(
         signal = int(y_pred[i])
         if can_trade and signal != 0:
             ret = fwd_returns[i] if not np.isnan(fwd_returns[i]) else 0.0
-            
-            # Compute dynamic costs based on market regime
-            if use_regime_costs:
-                regime = regime_labels[i] if regime_labels is not None else None
-                vol_z = volatility_zscores[i] if volatility_zscores is not None else 0.0
-                liq_z = liquidation_zscores[i] if liquidation_zscores is not None else 0.0
-                
-                dynamic_slippage, dynamic_commission = cost_model.compute_dynamic_costs(
-                    regime=regime,
-                    volatility_zscore=vol_z,
-                    liquidation_zscore=liq_z,
-                )
-                cost_per_trade = (dynamic_slippage + dynamic_commission) / 10000.0
-                
-                # Track cost breakdown
-                total_costs.append(cost_per_trade)
-                cost_breakdown["base_costs"].append((slippage_bps + commission_bps) / 10000.0)
-                cost_breakdown["volatility_premium"].append(
-                    cost_model.volatility_multiplier * max(0, vol_z) / 10000.0
-                )
-                cost_breakdown["liquidation_premium"].append(
-                    cost_model.liquidation_multiplier * max(0, liq_z) / 10000.0
-                )
-                if regime and regime in cost_model.regime_multipliers:
-                    cost_breakdown["regime_premium"].append(
-                        (cost_model.regime_multipliers[regime] - 1.0) * (slippage_bps + commission_bps) / 10000.0
-                    )
-                else:
-                    cost_breakdown["regime_premium"].append(0.0)
-            else:
-                cost_per_trade = (slippage_bps + commission_bps) / 10000.0
-            
             pnl = signal * ret * equity - abs(signal) * cost_per_trade * equity
             equity += pnl
             trades += 1
@@ -207,18 +139,6 @@ def compute_fold_metrics(
 
     metrics["breach_count"] = breach_count
     metrics["breach_rate"] = breach_count / max(n, 1)
-    
-    # Add cost breakdown if regime-aware costs were used
-    if use_regime_costs and total_costs:
-        metrics["avg_cost_per_trade_bps"] = float(np.mean(total_costs) * 10000)
-        metrics["total_cost_premium_bps"] = float(
-            np.mean(cost_breakdown["volatility_premium"]) * 10000 +
-            np.mean(cost_breakdown["liquidation_premium"]) * 10000 +
-            np.mean(cost_breakdown["regime_premium"]) * 10000
-        )
-        metrics["volatility_cost_premium_bps"] = float(np.mean(cost_breakdown["volatility_premium"]) * 10000)
-        metrics["liquidation_cost_premium_bps"] = float(np.mean(cost_breakdown["liquidation_premium"]) * 10000)
-        metrics["regime_cost_premium_bps"] = float(np.mean(cost_breakdown["regime_premium"]) * 10000)
 
     return metrics
 
