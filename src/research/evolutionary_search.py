@@ -237,9 +237,13 @@ class EvolutionarySearch:
         Returns sorted list of individuals by fitness (best first).
         """
         if splitter is None:
-            splitter = PurgedWalkForward.from_config()
+            splitter = PurgedWalkForward.from_config(horizon=horizon)
+        elif splitter.horizon != horizon:
+            # Ensure purge gap is correct for this horizon
+            splitter = splitter.with_horizon(horizon)
 
-        logger.info("evo_search_start", horizon=horizon, pop_size=self.population_size, gens=self.generations)
+        logger.info("evo_search_start", horizon=horizon, pop_size=self.population_size,
+                     gens=self.generations, purge_hours=splitter.purge_hours)
 
         population = self.initialize_population()
 

@@ -1,4 +1,15 @@
-"""Tests for purged walk-forward split correctness."""
+"""Tests for purged walk-forward split correctness, model selection,
+and regime-dependent slippage.
+
+Covers:
+- Base walk-forward fold generation (no overlap, purge gap, chronological)
+- Dynamic purge gap scaling per label horizon (our 3x multiplier)
+- with_horizon() API for reconfiguring splitters
+- Bonferroni correction for both Sharpe AND accuracy thresholds
+- Consecutive window requirement and catastrophic fold rejection
+- Regime-dependent slippage with vol multiplier, liquidation adder,
+  commission scaling, and cost breakdown
+"""
 import numpy as np
 import pandas as pd
 import pytest
@@ -127,6 +138,34 @@ class TestDynamicPurge:
         assert splitter_long.purge_hours == 72
         assert splitter_long.purge_hours > splitter_short.purge_hours
 
+    def test_with_horizon_method(self):
+        """with_horizon() should return new splitter with correct purge."""
+        from src.research.purged_walk_forward import PurgedWalkForward
+
+        base = PurgedWalkForward(purge_hours=48, horizon=1)
+        assert base.purge_hours == 48
+
+        reconfigured = base.with_horizon(24)
+        assert reconfigured.purge_hours == 72
+        assert reconfigured.horizon == 24
+        # Original unchanged
+        assert base.purge_hours == 48
+        assert base.horizon == 1
+        # Other settings preserved
+        assert reconfigured.train_days == base.train_days
+        assert reconfigured.embargo_hours == base.embargo_hours
+
+    def test_with_horizon_preserves_base_purge(self):
+        """with_horizon() should use original base_purge_hours, not computed."""
+        from src.research.purged_walk_forward import PurgedWalkForward
+
+        base = PurgedWalkForward(purge_hours=48, horizon=24)
+        assert base.purge_hours == 72  # scaled
+
+        # Reconfigure to short horizon — should go back to 48, not 72
+        short = base.with_horizon(1)
+        assert short.purge_hours == 48
+
     def test_dynamic_purge_prevents_leakage(self):
         """With 24h horizon, purge gap in actual folds must be >= 72h."""
         from src.research.purged_walk_forward import PurgedWalkForward
@@ -154,7 +193,7 @@ class TestDynamicPurge:
 class TestSelectionMultipleComparisons:
     """Tests for Bonferroni-adjusted thresholds and consecutive windows."""
 
-    def test_bonferroni_increases_threshold(self):
+    def test_bonferroni_increases_sharpe_threshold(self):
         """More comparisons should raise the Sharpe threshold."""
         from src.research.selection import _bonferroni_sharpe
 
@@ -162,6 +201,17 @@ class TestSelectionMultipleComparisons:
         assert _bonferroni_sharpe(base, 1) == base
         assert _bonferroni_sharpe(base, 5) > base
         assert _bonferroni_sharpe(base, 20) > _bonferroni_sharpe(base, 5)
+
+    def test_bonferroni_increases_accuracy_threshold(self):
+        """More comparisons should also raise the accuracy threshold."""
+        from src.research.selection import _bonferroni_accuracy
+
+        base = 0.52
+        assert _bonferroni_accuracy(base, 1) == base
+        assert _bonferroni_accuracy(base, 5) > base
+        assert _bonferroni_accuracy(base, 20) > _bonferroni_accuracy(base, 5)
+        # Should never exceed 1.0
+        assert _bonferroni_accuracy(base, 1000) < 1.0
 
     def test_consecutive_windows_pass(self):
         """Model with consistent folds should pass."""
@@ -200,8 +250,8 @@ class TestSelectionMultipleComparisons:
         assert not passes
         assert 1 in bad
 
-    def test_select_candidates_applies_correction(self):
-        """select_candidates with many models should raise threshold."""
+    def test_select_candidates_applies_sharpe_correction(self):
+        """select_candidates with many models should raise Sharpe threshold."""
         from src.research.selection import select_candidates
 
         # Create 20 models all with marginal Sharpe 0.55
@@ -220,6 +270,29 @@ class TestSelectionMultipleComparisons:
         assert len(candidates) == 0
 
         # Without correction: 0.55 > 0.5 base, should pass
+        candidates = select_candidates(results, apply_multiple_comparisons=False)
+        assert len(candidates) == 20
+
+    def test_select_candidates_applies_accuracy_correction(self):
+        """Accuracy threshold should also tighten with more comparisons."""
+        from src.research.selection import select_candidates
+
+        # Models with high Sharpe but marginal accuracy 0.53
+        results = []
+        for i in range(20):
+            results.append({
+                "model_id": f"model_{i}",
+                "folds": [{"sharpe_ratio": 2.0, "accuracy": 0.53,
+                           "breach_rate": 0.0, "max_drawdown": -0.02}
+                          for _ in range(5)],
+            })
+
+        # With correction: accuracy threshold ≈ 0.52 + (0.48)*0.05*ln(20) ≈ 0.592
+        # 0.53 < 0.592, should fail
+        candidates = select_candidates(results, apply_multiple_comparisons=True)
+        assert len(candidates) == 0
+
+        # Without correction: 0.53 > 0.52, should pass
         candidates = select_candidates(results, apply_multiple_comparisons=False)
         assert len(candidates) == 20
 
@@ -285,6 +358,45 @@ class TestRegimeSlippage:
         )
         assert stressed > calm * 2  # significantly higher
 
+    def test_commission_scales_with_sqrt_vol(self):
+        """Commission should scale with sqrt of vol multiplier (dampened)."""
+        from src.execution.slippage_model import compute_regime_costs
+
+        # Calm market
+        _, calm_comm, _ = compute_regime_costs(
+            base_commission_bps=2.0,
+            recent_returns=np.random.normal(0, 0.001, 24),
+        )
+
+        # Very volatile (vol mult should be ~4x)
+        _, vol_comm, breakdown = compute_regime_costs(
+            base_commission_bps=2.0,
+            recent_returns=np.random.normal(0, 0.008, 24),
+        )
+
+        # Commission should increase but less than slippage
+        assert vol_comm > calm_comm
+        # sqrt scaling means if vol_mult=4, commission_mult=2
+        assert breakdown["commission_multiplier"] < breakdown["vol_multiplier"]
+
+    def test_compute_regime_costs_returns_breakdown(self):
+        """compute_regime_costs should return detailed breakdown dict."""
+        from src.execution.slippage_model import compute_regime_costs
+
+        slip, comm, breakdown = compute_regime_costs(
+            base_slippage_bps=5.0,
+            base_commission_bps=2.0,
+            recent_returns=np.random.normal(0, 0.004, 24),
+            liquidation_volume_usd=2_000_000,
+        )
+
+        assert "vol_multiplier" in breakdown
+        assert "commission_multiplier" in breakdown
+        assert "liq_adder_bps" in breakdown
+        assert breakdown["liq_adder_bps"] == pytest.approx(1.0)
+        assert slip == pytest.approx(breakdown["effective_slippage_bps"])
+        assert comm == pytest.approx(breakdown["effective_commission_bps"])
+
     def test_apply_regime_slippage(self):
         """Convenience function should give different fills in different regimes."""
         from src.execution.slippage_model import apply_regime_slippage
@@ -311,3 +423,11 @@ class TestRegimeSlippage:
         sell_fill = apply_slippage(mid, is_buy=False, slippage_bps=5.0)
         assert buy_fill == pytest.approx(50025.0)
         assert sell_fill == pytest.approx(49975.0)
+
+    def test_regime_cost_multipliers_exist(self):
+        """Named regime presets should be available for callers with regime detectors."""
+        from src.execution.slippage_model import REGIME_COST_MULTIPLIERS
+
+        assert REGIME_COST_MULTIPLIERS["panic_flush"] == 3.0
+        assert REGIME_COST_MULTIPLIERS["normal"] == 1.0
+        assert "squeeze" in REGIME_COST_MULTIPLIERS

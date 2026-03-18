@@ -93,13 +93,66 @@ def compute_liquidation_adder(
     return min(adder, cap_bps)
 
 
+def compute_regime_costs(
+    base_slippage_bps: float = BASELINE_SLIPPAGE_BPS,
+    base_commission_bps: float = 2.0,
+    recent_returns: np.ndarray | pd.Series | None = None,
+    liquidation_volume_usd: float = 0.0,
+    baseline_vol: float = BASELINE_VOLATILITY,
+) -> tuple[float, float, dict[str, float]]:
+    """Compute regime-adjusted slippage AND commission in bps.
+
+    Both slippage and commission scale with volatility — during stress
+    regimes, exchanges may widen spreads AND increase taker fees.
+    Commission scaling is dampened (sqrt of multiplier) since fee
+    increases are less dramatic than spread widening.
+
+    Returns:
+        (effective_slippage_bps, effective_commission_bps, breakdown_dict)
+
+    The breakdown dict contains:
+        vol_multiplier, liq_adder_bps, base_slippage_bps, base_commission_bps,
+        effective_slippage_bps, effective_commission_bps
+    """
+    if recent_returns is not None and len(recent_returns) >= 2:
+        vol_mult = compute_volatility_multiplier(recent_returns, baseline_vol)
+    else:
+        vol_mult = 1.0
+
+    liq_adder = compute_liquidation_adder(liquidation_volume_usd)
+
+    effective_slippage = base_slippage_bps * vol_mult + liq_adder
+    # Commission scales with sqrt of vol multiplier (dampened)
+    # e.g. 3x vol → commission *= 1.73, not 3.0
+    commission_mult = max(1.0, vol_mult ** 0.5)
+    effective_commission = base_commission_bps * commission_mult
+
+    breakdown = {
+        "vol_multiplier": round(vol_mult, 3),
+        "commission_multiplier": round(commission_mult, 3),
+        "liq_adder_bps": round(liq_adder, 3),
+        "base_slippage_bps": base_slippage_bps,
+        "base_commission_bps": base_commission_bps,
+        "effective_slippage_bps": round(effective_slippage, 3),
+        "effective_commission_bps": round(effective_commission, 3),
+    }
+
+    if vol_mult > 1.5 or liq_adder > 1.0:
+        logger.debug("regime_costs_elevated", **breakdown)
+
+    return effective_slippage, effective_commission, breakdown
+
+
 def compute_regime_slippage(
     base_slippage_bps: float = BASELINE_SLIPPAGE_BPS,
     recent_returns: np.ndarray | pd.Series | None = None,
     liquidation_volume_usd: float = 0.0,
     baseline_vol: float = BASELINE_VOLATILITY,
 ) -> float:
-    """Compute regime-adjusted slippage in bps.
+    """Compute regime-adjusted slippage in bps (slippage only).
+
+    Convenience wrapper around compute_regime_costs for backward
+    compatibility. Use compute_regime_costs() for full cost breakdown.
 
     Combines volatility-based multiplier with liquidation-based adder:
         effective_slippage = base * vol_multiplier + liquidation_adder
@@ -109,30 +162,14 @@ def compute_regime_slippage(
         2x vol:         5 * 2.0 + 0 = 10.0 bps
         3x vol + 5M liquidations: 5 * 3.0 + 2.5 = 17.5 bps
         5x vol + 20M liquidations: 5 * 5.0 + 10.0 = 35.0 bps (capped)
-
-    Args:
-        base_slippage_bps: baseline slippage assumption
-        recent_returns: recent hourly returns for vol calculation
-        liquidation_volume_usd: recent liquidation volume in USD
-        baseline_vol: "normal" hourly volatility
-
-    Returns:
-        Effective slippage in bps
     """
-    if recent_returns is not None and len(recent_returns) >= 2:
-        vol_mult = compute_volatility_multiplier(recent_returns, baseline_vol)
-    else:
-        vol_mult = 1.0
-
-    liq_adder = compute_liquidation_adder(liquidation_volume_usd)
-    effective = base_slippage_bps * vol_mult + liq_adder
-
-    if vol_mult > 1.5 or liq_adder > 1.0:
-        logger.debug("regime_slippage_elevated",
-                     base=base_slippage_bps, vol_mult=round(vol_mult, 2),
-                     liq_adder=round(liq_adder, 2), effective=round(effective, 2))
-
-    return effective
+    slippage, _, _ = compute_regime_costs(
+        base_slippage_bps=base_slippage_bps,
+        recent_returns=recent_returns,
+        liquidation_volume_usd=liquidation_volume_usd,
+        baseline_vol=baseline_vol,
+    )
+    return slippage
 
 
 def apply_regime_slippage(
@@ -163,3 +200,14 @@ def apply_regime_slippage(
         liquidation_volume_usd=liquidation_volume_usd,
     )
     return apply_slippage(mid_price, is_buy, effective_bps)
+
+
+# Regime multiplier presets for named regimes (from PR#3 design).
+# These can be used by callers who have a regime detector.
+REGIME_COST_MULTIPLIERS: dict[str, float] = {
+    "panic_flush": 3.0,
+    "squeeze": 2.0,
+    "crowded_long": 1.5,
+    "crowded_short": 1.5,
+    "normal": 1.0,
+}

@@ -42,6 +42,28 @@ def _bonferroni_sharpe(base_sharpe: float, n_comparisons: int) -> float:
     return adjusted
 
 
+def _bonferroni_accuracy(base_accuracy: float, n_comparisons: int) -> float:
+    """Adjust accuracy threshold for multiple comparisons.
+
+    Scales the remaining headroom (1 - base_accuracy) logarithmically
+    with the number of comparisons. This tightens the accuracy bar
+    without ever exceeding 1.0.
+
+    Formula: adjusted = base + (1 - base) * 0.05 * ln(n)
+    - 1 comparison:  0.52 + 0.0   = 0.520
+    - 5 comparisons: 0.52 + 0.039 = 0.559
+    - 20 comparisons: 0.52 + 0.072 = 0.592
+    """
+    if n_comparisons <= 1:
+        return base_accuracy
+    adjustment = (1.0 - base_accuracy) * 0.05 * np.log(n_comparisons)
+    adjusted = base_accuracy + adjustment
+    logger.debug("accuracy_threshold_adjusted",
+                 base=base_accuracy, n_comparisons=n_comparisons,
+                 adjusted=round(adjusted, 4))
+    return adjusted
+
+
 def _check_consecutive_windows(
     folds: list[dict[str, Any]],
     min_sharpe: float,
@@ -146,8 +168,10 @@ def select_candidates(
     n_comparisons = len(fold_results)
     if apply_multiple_comparisons and n_comparisons > 1:
         adjusted_sharpe = _bonferroni_sharpe(min_oos_sharpe, n_comparisons)
+        adjusted_accuracy = _bonferroni_accuracy(min_oos_accuracy, n_comparisons)
     else:
         adjusted_sharpe = min_oos_sharpe
+        adjusted_accuracy = min_oos_accuracy
 
     candidates = []
     for result in fold_results:
@@ -167,8 +191,9 @@ def select_candidates(
             logger.debug("skipped_low_sharpe", model_id=model_id,
                         sharpe=avg_sharpe, threshold=adjusted_sharpe)
             continue
-        if avg_accuracy < min_oos_accuracy:
-            logger.debug("skipped_low_accuracy", model_id=model_id, acc=avg_accuracy)
+        if avg_accuracy < adjusted_accuracy:
+            logger.debug("skipped_low_accuracy", model_id=model_id,
+                        acc=avg_accuracy, threshold=adjusted_accuracy)
             continue
         if avg_breach_rate > max_breach_rate:
             logger.debug("skipped_high_breach", model_id=model_id, breach=avg_breach_rate)
@@ -195,6 +220,7 @@ def select_candidates(
         result["avg_breach_rate"] = avg_breach_rate
         result["consecutive_passing_streak"] = longest_streak
         result["adjusted_sharpe_threshold"] = adjusted_sharpe
+        result["adjusted_accuracy_threshold"] = adjusted_accuracy
         candidates.append(result)
 
     candidates.sort(key=lambda x: x.get("avg_sharpe", 0), reverse=True)

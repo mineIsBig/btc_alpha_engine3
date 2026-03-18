@@ -175,6 +175,24 @@ class PurgedWalkForward:
             # Step forward: next train starts after embargo from test end
             train_start += step_td
 
+    def with_horizon(self, horizon: int) -> PurgedWalkForward:
+        """Return a new splitter reconfigured for a different horizon.
+
+        Preserves all settings but recomputes the purge gap for the
+        given horizon. Useful when iterating over multiple horizons
+        without re-reading config each time.
+        """
+        return PurgedWalkForward(
+            train_days=self.train_days,
+            test_days=self.test_days,
+            purge_hours=self.base_purge_hours,
+            embargo_hours=self.embargo_hours,
+            step_days=self.step_days,
+            min_train_samples=self.min_train_samples,
+            max_folds=self.max_folds,
+            horizon=horizon,
+        )
+
     def get_n_folds(self, timestamps: pd.Series | np.ndarray) -> int:
         """Count the number of folds without generating them."""
         return sum(1 for _ in self.split(timestamps))

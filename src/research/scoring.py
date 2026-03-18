@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from src.common.config import load_yaml_config
 from src.common.logging import get_logger
 from src.execution.slippage_model import (
-    compute_regime_slippage,
+    compute_regime_costs,
     BASELINE_SLIPPAGE_BPS,
     VOLATILITY_LOOKBACK,
 )
@@ -62,6 +62,14 @@ def compute_fold_metrics(
     breach_count = 0
     can_trade = True
     total_slippage_bps = 0.0
+    total_commission_bps = 0.0
+
+    # Cost breakdown tracking (cherry-picked from PR#3)
+    cost_breakdown = {
+        "vol_premiums": [],
+        "liq_premiums": [],
+        "commission_premiums": [],
+    }
 
     # Day state tracking
     day_opening_equity = equity
@@ -98,21 +106,32 @@ def compute_fold_metrics(
         if can_trade and signal != 0:
             ret = fwd_returns[i] if not np.isnan(fwd_returns[i]) else 0.0
 
-            # Compute regime-adjusted slippage
+            # Compute regime-adjusted slippage AND commission
             if price_returns is not None and regime_slippage:
                 lookback_start = max(0, i - VOLATILITY_LOOKBACK)
                 recent_rets = price_returns[lookback_start:i]
                 liq_vol = float(liquidation_volumes[i]) if liquidation_volumes is not None else 0.0
-                effective_slippage = compute_regime_slippage(
+                effective_slippage, effective_commission, breakdown = compute_regime_costs(
                     base_slippage_bps=slippage_bps,
+                    base_commission_bps=commission_bps,
                     recent_returns=recent_rets,
                     liquidation_volume_usd=liq_vol,
                 )
+                # Track per-trade cost breakdown
+                cost_breakdown["vol_premiums"].append(
+                    (breakdown["vol_multiplier"] - 1.0) * slippage_bps
+                )
+                cost_breakdown["liq_premiums"].append(breakdown["liq_adder_bps"])
+                cost_breakdown["commission_premiums"].append(
+                    effective_commission - commission_bps
+                )
             else:
                 effective_slippage = slippage_bps
+                effective_commission = commission_bps
 
             total_slippage_bps += effective_slippage
-            cost_per_trade = (effective_slippage + commission_bps) / 10000.0
+            total_commission_bps += effective_commission
+            cost_per_trade = (effective_slippage + effective_commission) / 10000.0
             pnl = signal * ret * equity - abs(signal) * cost_per_trade * equity
             equity += pnl
             trades += 1
@@ -178,6 +197,22 @@ def compute_fold_metrics(
     metrics["breach_count"] = breach_count
     metrics["breach_rate"] = breach_count / max(n, 1)
     metrics["avg_slippage_bps"] = total_slippage_bps / trades if trades > 0 else slippage_bps
+    metrics["avg_commission_bps"] = total_commission_bps / trades if trades > 0 else commission_bps
+    metrics["avg_cost_per_trade_bps"] = (
+        (total_slippage_bps + total_commission_bps) / trades if trades > 0
+        else slippage_bps + commission_bps
+    )
+
+    # Detailed cost breakdown (when regime slippage was active)
+    if cost_breakdown["vol_premiums"]:
+        metrics["volatility_cost_premium_bps"] = float(np.mean(cost_breakdown["vol_premiums"]))
+        metrics["liquidation_cost_premium_bps"] = float(np.mean(cost_breakdown["liq_premiums"]))
+        metrics["commission_premium_bps"] = float(np.mean(cost_breakdown["commission_premiums"]))
+        metrics["total_cost_premium_bps"] = (
+            metrics["volatility_cost_premium_bps"]
+            + metrics["liquidation_cost_premium_bps"]
+            + metrics["commission_premium_bps"]
+        )
 
     return metrics
 
