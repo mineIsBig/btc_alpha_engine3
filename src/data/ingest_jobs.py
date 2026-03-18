@@ -1,4 +1,7 @@
-"""Data ingestion jobs: backfill and incremental refresh."""
+"""Data ingestion jobs: backfill and incremental refresh.
+
+Uses Coinalyze API (replaces CoinGlass).
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -8,7 +11,7 @@ from sqlalchemy import select, func
 
 from src.common.logging import get_logger
 from src.common.time_utils import utc_now
-from src.data.coinglass_client import CoinGlassClient
+from src.data.coinalyze_client import CoinalyzeClient
 from src.data.validators import validate_ohlc, validate_ratio_data, validate_liquidation_data
 from src.data.resampler import align_to_hourly
 from src.storage.database import session_scope
@@ -41,8 +44,8 @@ def backfill_price_data(
     end: datetime | None = None,
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
-    """Backfill hourly price bars from CoinGlass OHLC."""
-    client = CoinGlassClient()
+    """Backfill hourly price bars from Coinalyze OHLCV."""
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -57,10 +60,6 @@ def backfill_price_data(
             chunk_end = min(current + timedelta(days=chunk_days), end)
             logger.info("backfill_price", start=current.isoformat(), end=chunk_end.isoformat())
 
-            # Use OI OHLC as a proxy for price if price endpoint unavailable,
-            # or funding OHLC for the funding-specific data.
-            # CoinGlass v3 doesn't have a dedicated price OHLC, so we use their
-            # candle data or fall back to Hyperliquid candles.
             df = client.fetch_oi_ohlc(
                 symbol=symbol, exchange=exchange,
                 start_time=current, end_time=chunk_end, limit=500,
@@ -84,7 +83,7 @@ def backfill_price_data(
                     "low": r["low"],
                     "close": r["close"],
                     "volume": r.get("volume", 0),
-                    "source": "coinglass",
+                    "source": "coinalyze",
                 })
 
             with session_scope() as session:
@@ -106,7 +105,7 @@ def backfill_funding(
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
     """Backfill funding rate OHLC data."""
-    client = CoinGlassClient()
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -145,7 +144,7 @@ def backfill_oi(
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
     """Backfill OI OHLC data."""
-    client = CoinGlassClient()
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -183,7 +182,7 @@ def backfill_liquidations(
     end: datetime | None = None,
 ) -> int:
     """Backfill liquidation data."""
-    client = CoinGlassClient()
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -224,7 +223,7 @@ def backfill_long_short(
     exchange: str = DEFAULT_EXCHANGE,
 ) -> int:
     """Backfill long/short ratio data."""
-    client = CoinGlassClient()
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)
@@ -263,7 +262,7 @@ def backfill_taker_flow(
     end: datetime | None = None,
 ) -> int:
     """Backfill taker buy/sell data."""
-    client = CoinGlassClient()
+    client = CoinalyzeClient()
     try:
         if start is None:
             start = datetime(2023, 1, 1, tzinfo=timezone.utc)

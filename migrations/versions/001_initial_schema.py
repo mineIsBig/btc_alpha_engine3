@@ -21,7 +21,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("symbol", sa.String(20), nullable=False),
         sa.Column("exchange_symbol", sa.String(20)),
-        sa.Column("coinglass_symbol", sa.String(20)),
+        sa.Column("coinalyze_symbol", sa.String(30)),
         sa.Column("hyperliquid_symbol", sa.String(20)),
         sa.Column("tick_size", sa.Float(), default=0.1),
         sa.Column("lot_size", sa.Float(), default=0.001),
@@ -45,7 +45,7 @@ def upgrade() -> None:
         sa.Column("low", sa.Float(), nullable=False),
         sa.Column("close", sa.Float(), nullable=False),
         sa.Column("volume", sa.Float(), default=0.0),
-        sa.Column("source", sa.String(20), default="coinglass"),
+        sa.Column("source", sa.String(20), default="coinalyze"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("symbol", "timestamp", name="uq_price_1h"),
     )

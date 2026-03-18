@@ -29,7 +29,7 @@ class Instrument(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), unique=True, nullable=False, index=True)
     exchange_symbol = Column(String(20))
-    coinglass_symbol = Column(String(20))
+    coinalyze_symbol = Column(String(30))
     hyperliquid_symbol = Column(String(20))
     tick_size = Column(Float, default=0.1)
     lot_size = Column(Float, default=0.001)
@@ -56,10 +56,10 @@ class PriceBar1h(Base):
     low = Column(Float, nullable=False)
     close = Column(Float, nullable=False)
     volume = Column(Float, default=0.0)
-    source = Column(String(20), default="coinglass")
+    source = Column(String(20), default="coinalyze")
 
 
-# ── CoinGlass Data Tables ────────────────────────────────────
+# ── Derivatives Data Tables (sourced from Coinalyze) ─────────
 
 class CGFunding1h(Base):
     __tablename__ = "cg_funding_1h"
