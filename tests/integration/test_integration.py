@@ -26,21 +26,25 @@ class TestEndToEndPaperTrade:
         broker = PaperBroker()
         risk = RiskManager(initial_equity=100000)
 
-        # Update equity
-        can_trade = risk.update_equity(100000)
+        # Update equity via on_equity_update
+        can_trade, reason = risk.on_equity_update(100000)
         assert can_trade
 
+        # Set price before submitting order
+        broker.set_price("BTC", 40000.0)
+
         # Submit order
-        result = broker.submit_order("BTC", "buy", 0.1, 40000.0, reason="test")
+        result = broker.submit_order("BTC", "buy", 0.1, reason="test")
         assert result["status"] == "filled"
 
         # Check equity after
-        equity = broker.get_equity({"BTC": 40500.0}, cash=96000.0)
-        can_trade = risk.update_equity(equity)
+        broker.set_price("BTC", 40500.0)
+        can_trade, reason = risk.on_equity_update(100050)
         assert can_trade
 
-        # Flatten
-        broker.flatten("BTC", 40500.0)
+        # Flatten all positions
+        results = broker.flatten_all(reason="test_close")
+        assert len(results) >= 1
         pos = broker.get_position("BTC")
         assert pos["side"] == "flat"
 
