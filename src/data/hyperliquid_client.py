@@ -7,6 +7,12 @@ Falls back to paper broker if auth not configured.
 Hyperliquid API:
 - Info endpoint (POST /info): public market data, no auth required
 - Exchange endpoint (POST /exchange): order management, requires auth
+
+Data endpoints available for fallback when Coinalyze is rate-limited:
+- candleSnapshot: OHLCV candles (price data)
+- fundingHistory: historical funding rates
+- metaAndAssetCtxs: current open interest snapshot (no history)
+- NOT available: liquidations history, long/short ratio, taker buy/sell
 """
 from __future__ import annotations
 
@@ -15,10 +21,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import pandas as pd
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.common.config import get_settings, load_yaml_config
 from src.common.logging import get_logger
+from src.common.time_utils import ts_to_ms
 
 logger = get_logger(__name__)
 
@@ -126,6 +134,113 @@ class HyperliquidClient:
         mids = self.get_all_mids()
         mid = mids.get(symbol)
         return float(mid) if mid else None
+
+    # ── Data Fallback Endpoints (for Coinalyze rate-limit fallback) ──
+
+    def fetch_funding_history(
+        self,
+        symbol: str = "BTC",
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> pd.DataFrame:
+        """Fetch historical funding rates from Hyperliquid.
+
+        Returns DataFrame with columns: timestamp, open, high, low, close
+        where close = the funding rate at that time (open/high/low set equal).
+        Hyperliquid funding rates are per-hour, paid every 8h.
+        """
+        payload: dict[str, Any] = {
+            "type": "fundingHistory",
+            "coin": symbol,
+            "startTime": ts_to_ms(start_time) if start_time else 0,
+        }
+        if end_time:
+            payload["endTime"] = ts_to_ms(end_time)
+
+        data = self._post_info(payload)
+
+        if not data:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close"])
+
+        rows = []
+        for item in data:
+            rate = float(item.get("fundingRate", 0))
+            ts_str = item.get("time", "")
+            ts = pd.to_datetime(ts_str, utc=True) if ts_str else None
+            if ts is None:
+                continue
+            rows.append({
+                "timestamp": ts,
+                "open": rate,
+                "high": rate,
+                "low": rate,
+                "close": rate,
+            })
+
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+            df = df.sort_values("timestamp").reset_index(drop=True)
+        return df
+
+    def fetch_candles_df(
+        self,
+        symbol: str = "BTC",
+        interval: str = "1h",
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> pd.DataFrame:
+        """Fetch OHLCV candles as a DataFrame.
+
+        Returns DataFrame with: timestamp, open, high, low, close, volume
+        """
+        start_ms = ts_to_ms(start_time) if start_time else None
+        end_ms = ts_to_ms(end_time) if end_time else None
+
+        data = self.get_candles(
+            symbol=symbol, interval=interval,
+            start_time=start_ms, end_time=end_ms,
+        )
+
+        if not data:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        rows = []
+        for item in data:
+            rows.append({
+                "timestamp": pd.to_datetime(item["t"], unit="ms", utc=True),
+                "open": float(item["o"]),
+                "high": float(item["h"]),
+                "low": float(item["l"]),
+                "close": float(item["c"]),
+                "volume": float(item.get("v", 0)),
+            })
+
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df = df.sort_values("timestamp").reset_index(drop=True)
+        return df
+
+    def fetch_current_open_interest(self, symbol: str = "BTC") -> float | None:
+        """Get current open interest for a symbol (USD).
+
+        NOTE: Hyperliquid only provides current OI snapshot, not historical.
+        Returns OI value or None if not found.
+        """
+        data = self._post_info({"type": "metaAndAssetCtxs"})
+
+        if not data or len(data) < 2:
+            return None
+
+        meta = data[0]
+        contexts = data[1]
+        universe = meta.get("universe", [])
+
+        for i, asset in enumerate(universe):
+            if asset.get("name", "").upper() == symbol.upper():
+                if i < len(contexts):
+                    return float(contexts[i].get("openInterest", 0))
+        return None
 
     # ── Exchange Endpoints (Authenticated) ───────────────────
     # NOTE: Live order submission requires proper EIP-712 signing.
