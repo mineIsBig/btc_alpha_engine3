@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Bootstrap the database: create tables and seed instruments."""
+
 import sys
+
 sys.path.insert(0, ".")
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from src.common.logging import setup_logging, get_logger
@@ -26,19 +29,23 @@ def main() -> None:
     assets = load_yaml_config("assets.yaml")
     with session_scope() as session:
         for inst in assets.get("instruments", []):
-            existing = session.query(Instrument).filter_by(symbol=inst["symbol"]).first()
+            existing = (
+                session.query(Instrument).filter_by(symbol=inst["symbol"]).first()
+            )
             if existing is None:
-                session.add(Instrument(
-                    symbol=inst["symbol"],
-                    exchange_symbol=inst.get("exchange_symbol"),
-                    coinalyze_symbol=inst.get("coinalyze_symbol"),
-                    hyperliquid_symbol=inst.get("hyperliquid_symbol"),
-                    tick_size=inst.get("tick_size", 0.1),
-                    lot_size=inst.get("lot_size", 0.001),
-                    min_notional=inst.get("min_notional", 10.0),
-                    max_position_usd=inst.get("max_position_usd", 100000.0),
-                    enabled=inst.get("enabled", True),
-                ))
+                session.add(
+                    Instrument(
+                        symbol=inst["symbol"],
+                        exchange_symbol=inst.get("exchange_symbol"),
+                        coinalyze_symbol=inst.get("coinalyze_symbol"),
+                        hyperliquid_symbol=inst.get("hyperliquid_symbol"),
+                        tick_size=inst.get("tick_size", 0.1),
+                        lot_size=inst.get("lot_size", 0.001),
+                        min_notional=inst.get("min_notional", 10.0),
+                        max_position_usd=inst.get("max_position_usd", 100000.0),
+                        enabled=inst.get("enabled", True),
+                    )
+                )
                 logger.info("instrument_seeded", symbol=inst["symbol"])
 
     logger.info("bootstrap_complete")

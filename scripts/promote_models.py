@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Promote candidate models that pass selection criteria."""
+
 import sys
+
 sys.path.insert(0, ".")
 
 import click
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from src.common.logging import setup_logging, get_logger
@@ -45,6 +48,7 @@ def main(min_sharpe: float, model_id: str | None, dry_run: bool) -> None:
                 else:
                     c.status = "promoted"
                     from datetime import datetime
+
                     c.promoted_at = datetime.utcnow()
                     logger.info("promoted", model_id=c.model_id, sharpe=sharpe)
 

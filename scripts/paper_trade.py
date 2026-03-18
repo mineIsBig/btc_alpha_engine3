@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Start paper trading loop."""
+
 import sys
+
 sys.path.insert(0, ".")
 
 import click
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from src.common.logging import setup_logging, get_logger
@@ -20,10 +23,12 @@ def main(equity: float) -> None:
 
     # Force paper mode
     import os
+
     os.environ["PAPER_MODE"] = "true"
     os.environ["LIVE_TRADING_ENABLED"] = "false"
 
     from src.orchestrator.live_cycle import run_live_cycle
+
     run_live_cycle(initial_equity=equity)
 
 
