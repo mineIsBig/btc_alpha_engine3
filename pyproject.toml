@@ -38,6 +38,7 @@ prometheus-client = "^0.21"
 
 [tool.poetry.extras]
 postgres = ["psycopg2-binary"]
+timescale = ["psycopg2-binary"]
 torch = ["torch"]
 lium = ["lium.io"]
 

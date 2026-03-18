@@ -1,0 +1,68 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── IDE ───────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Environment & Secrets ─────────────────────────────────────
+.env
+.env.local
+.env.production
+credentials.json
+*.pem
+*.key
+
+# ── Database files ────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+btc_alpha.db
+
+# ── Model artifacts & agent state ─────────────────────────────
+artifacts/
+*.pkl
+*.pickle
+*.joblib
+*.lightgbm
+*.xgb
+*.onnx
+agent_state.json
+
+# ── Logs & monitoring ─────────────────────────────────────────
+logs/
+*.log
+
+# ── Test / Coverage ───────────────────────────────────────────
+.coverage
+htmlcov/
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Jupyter ───────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Poetry ────────────────────────────────────────────────────
+# Keep poetry.lock for reproducibility but ignore pip caches
+pip-wheel-metadata/

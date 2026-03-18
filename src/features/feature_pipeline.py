@@ -21,6 +21,7 @@ from src.features.oi_features import compute_oi_features
 from src.features.liquidation_features import compute_liquidation_features
 from src.features.flow_features import compute_flow_features
 from src.features.regime_features import compute_regime_features
+from src.features.temporal_interaction_features import compute_temporal_interaction_features
 from src.storage.database import get_session
 from src.storage.models import (
     PriceBar1h, CGFunding1h, CGOI1h, CGLiquidations1h,
@@ -191,7 +192,7 @@ def build_features(
     flow_feats = compute_flow_features(base)
     regime_feats = compute_regime_features(base)
 
-    # ── Interaction features ─────────────────────────────────
+    # ── Static interaction features ──────────────────────────
     interactions = pd.DataFrame(index=base.index)
 
     # Funding x OI
@@ -210,6 +211,9 @@ def build_features(
     if "oi_change_24h" in oi_feats.columns and "ret_24h" in price_feats.columns:
         interactions["oi_change_x_ret_24h"] = oi_feats["oi_change_24h"] * price_feats["ret_24h"]
 
+    # ── Temporal interaction features (second-order cross-features) ──
+    temporal_feats = compute_temporal_interaction_features(base)
+
     # ── Combine all features ─────────────────────────────────
     result = pd.concat([
         base[["timestamp"]],
@@ -220,6 +224,7 @@ def build_features(
         flow_feats,
         regime_feats,
         interactions,
+        temporal_feats,
     ], axis=1)
 
     # Drop regime_label from features (it's a label, not a feature for the model)
