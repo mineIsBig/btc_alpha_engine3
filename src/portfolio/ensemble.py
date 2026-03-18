@@ -1,4 +1,8 @@
-"""Ensemble signal aggregation across models and horizons."""
+"""Ensemble signal aggregation across models and horizons.
+
+Supports dynamic parameter evolution via EvolutionConfig. The agent can
+adjust consensus thresholds, weighting power, and confidence gates at runtime.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,18 +16,48 @@ from src.portfolio.signal_schema import ModelSignal, AggregatedSignal
 logger = get_logger(__name__)
 
 
+def _load_ensemble_params() -> dict[str, float | int]:
+    """Load ensemble parameters from EvolutionConfig, with defaults."""
+    defaults = {
+        "min_consensus_pct": 0.5,
+        "min_avg_confidence": 0.1,
+        "sharpe_weight_power": 1.5,
+    }
+    try:
+        from src.agent.evolution_config import load_evolution_config
+        config = load_evolution_config()
+        return {
+            "min_consensus_pct": config.ensemble.min_consensus_pct,
+            "min_avg_confidence": config.ensemble.min_avg_confidence,
+            "sharpe_weight_power": config.ensemble.sharpe_weight_power,
+        }
+    except Exception:
+        return defaults
+
+
 class EnsembleAggregator:
-    """Aggregate signals from multiple models using Sharpe-weighted consensus."""
+    """Aggregate signals from multiple models using Sharpe-weighted consensus.
+
+    Parameters can be overridden at construction time, or loaded dynamically
+    from EvolutionConfig when use_evolution_config=True.
+    """
 
     def __init__(
         self,
-        min_consensus_pct: float = 0.5,
-        min_avg_confidence: float = 0.1,
-        sharpe_weight_power: float = 1.5,
+        min_consensus_pct: float | None = None,
+        min_avg_confidence: float | None = None,
+        sharpe_weight_power: float | None = None,
+        use_evolution_config: bool = True,
     ):
-        self.min_consensus_pct = min_consensus_pct
-        self.min_avg_confidence = min_avg_confidence
-        self.sharpe_weight_power = sharpe_weight_power
+        if use_evolution_config and all(v is None for v in [min_consensus_pct, min_avg_confidence, sharpe_weight_power]):
+            params = _load_ensemble_params()
+            self.min_consensus_pct = params["min_consensus_pct"]
+            self.min_avg_confidence = params["min_avg_confidence"]
+            self.sharpe_weight_power = params["sharpe_weight_power"]
+        else:
+            self.min_consensus_pct = min_consensus_pct if min_consensus_pct is not None else 0.5
+            self.min_avg_confidence = min_avg_confidence if min_avg_confidence is not None else 0.1
+            self.sharpe_weight_power = sharpe_weight_power if sharpe_weight_power is not None else 1.5
 
     def aggregate(
         self,

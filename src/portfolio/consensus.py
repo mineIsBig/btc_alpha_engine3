@@ -1,4 +1,7 @@
-"""Cross-horizon consensus gating."""
+"""Cross-horizon consensus gating.
+
+Supports dynamic parameter evolution via EvolutionConfig.
+"""
 from __future__ import annotations
 
 from src.common.logging import get_logger
@@ -8,10 +11,21 @@ logger = get_logger(__name__)
 
 
 class ConsensusGate:
-    """Gate that checks agreement across multiple time horizons."""
+    """Gate that checks agreement across multiple time horizons.
 
-    def __init__(self, min_horizon_agreement: int = 2, horizons: list[int] | None = None):
-        self.min_horizon_agreement = min_horizon_agreement
+    When use_evolution_config=True, reads min_horizon_agreement from EvolutionConfig.
+    """
+
+    def __init__(self, min_horizon_agreement: int | None = None, horizons: list[int] | None = None,
+                 use_evolution_config: bool = True):
+        if use_evolution_config and min_horizon_agreement is None:
+            try:
+                from src.agent.evolution_config import load_evolution_config
+                config = load_evolution_config()
+                min_horizon_agreement = config.ensemble.min_horizon_agreement
+            except Exception:
+                min_horizon_agreement = 2
+        self.min_horizon_agreement = min_horizon_agreement if min_horizon_agreement is not None else 2
         self.horizons = horizons or [1, 4, 8, 12, 24]
 
     def check(self, horizon_signals: dict[int, AggregatedSignal]) -> tuple[int, str]:
