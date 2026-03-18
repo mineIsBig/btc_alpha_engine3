@@ -1,4 +1,5 @@
 """Exposure tracking and limits."""
+
 from __future__ import annotations
 
 from src.common.logging import get_logger
@@ -13,7 +14,9 @@ class ExposureTracker:
         self.max_gross_pct = max_gross_pct
         self.max_net_pct = max_net_pct
 
-    def check(self, gross_exposure: float, net_exposure: float, equity: float) -> tuple[bool, str]:
+    def check(
+        self, gross_exposure: float, net_exposure: float, equity: float
+    ) -> tuple[bool, str]:
         """Check if exposure is within limits."""
         if equity <= 0:
             return False, "zero_equity"

@@ -49,7 +49,7 @@ jobs:
           pip install mypy types-PyYAML types-requests
 
       - name: Mypy
-        run: mypy src/ --ignore-missing-imports --no-strict-optional
+        run: mypy src/
 
   test:
     name: Tests

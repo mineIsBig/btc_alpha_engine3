@@ -1,4 +1,5 @@
 """SQLAlchemy ORM models for all tables."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -23,6 +24,7 @@ class Base(DeclarativeBase):
 
 # ── Instruments ──────────────────────────────────────────────
 
+
 class Instrument(Base):
     __tablename__ = "instruments"
 
@@ -40,6 +42,7 @@ class Instrument(Base):
 
 
 # ── Price Bars ───────────────────────────────────────────────
+
 
 class PriceBar1h(Base):
     __tablename__ = "price_bars_1h"
@@ -60,6 +63,7 @@ class PriceBar1h(Base):
 
 
 # ── Derivatives Data Tables (sourced from Coinalyze) ─────────
+
 
 class CGFunding1h(Base):
     __tablename__ = "cg_funding_1h"
@@ -144,6 +148,7 @@ class CGTakerFlow1h(Base):
 
 # ── Feature Store ────────────────────────────────────────────
 
+
 class FeatureStore1h(Base):
     __tablename__ = "feature_store_1h"
     __table_args__ = (
@@ -190,6 +195,7 @@ class Regimes1h(Base):
 
 # ── Model Registry & Research ────────────────────────────────
 
+
 class ModelRegistry(Base):
     __tablename__ = "model_registry"
 
@@ -197,8 +203,8 @@ class ModelRegistry(Base):
     model_id = Column(String(100), unique=True, nullable=False, index=True)
     model_type = Column(String(50), nullable=False)
     horizon = Column(Integer, nullable=False)
-    features_json = Column(Text)        # JSON list of feature names
-    params_json = Column(Text)          # JSON dict of hyperparams
+    features_json = Column(Text)  # JSON list of feature names
+    params_json = Column(Text)  # JSON dict of hyperparams
     artifact_path = Column(String(500))
     train_start = Column(DateTime)
     train_end = Column(DateTime)
@@ -249,6 +255,7 @@ class ModelLiveScore(Base):
 
 # ── Account & Risk State ─────────────────────────────────────
 
+
 class AccountSnapshot(Base):
     __tablename__ = "account_snapshots"
     __table_args__ = (Index("ix_acct_ts", "timestamp"),)
@@ -268,7 +275,9 @@ class DayState(Base):
     __tablename__ = "day_state"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    trading_date = Column(String(10), unique=True, nullable=False, index=True)  # YYYY-MM-DD
+    trading_date = Column(
+        String(10), unique=True, nullable=False, index=True
+    )  # YYYY-MM-DD
     opening_equity = Column(Float, nullable=False)
     eod_high_water_mark = Column(Float, nullable=False)
     daily_loss_floor = Column(Float, nullable=False)
@@ -280,6 +289,7 @@ class DayState(Base):
 
 
 # ── Trading Objects ──────────────────────────────────────────
+
 
 class SignalRecord(Base):
     __tablename__ = "signals"
@@ -337,9 +347,7 @@ class Fill(Base):
 
 class Position(Base):
     __tablename__ = "positions"
-    __table_args__ = (
-        UniqueConstraint("symbol", "broker", name="uq_position"),
-    )
+    __table_args__ = (UniqueConstraint("symbol", "broker", name="uq_position"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)

@@ -1,14 +1,20 @@
 """Tests for paper broker order lifecycle."""
+
 import pytest
 
 
 class TestPaperBroker:
     def test_submit_order_fills_immediately(self):
         from src.execution.paper_broker import PaperBroker
+
         broker = PaperBroker(slippage_bps=5.0, commission_bps=2.0)
         result = broker.submit_order(
-            symbol="BTC", side="buy", quantity=0.1,
-            price=40000.0, order_type="market", reason="test",
+            symbol="BTC",
+            side="buy",
+            quantity=0.1,
+            price=40000.0,
+            order_type="market",
+            reason="test",
         )
         assert result["status"] == "filled"
         assert result["fill_price"] > 40000.0  # slippage on buy
@@ -16,6 +22,7 @@ class TestPaperBroker:
 
     def test_position_tracking(self):
         from src.execution.paper_broker import PaperBroker
+
         broker = PaperBroker()
 
         broker.submit_order("BTC", "buy", 0.5, 40000.0)
@@ -25,6 +32,7 @@ class TestPaperBroker:
 
     def test_flatten_closes_position(self):
         from src.execution.paper_broker import PaperBroker
+
         broker = PaperBroker()
 
         broker.submit_order("BTC", "buy", 0.5, 40000.0)
@@ -35,6 +43,7 @@ class TestPaperBroker:
 
     def test_short_position(self):
         from src.execution.paper_broker import PaperBroker
+
         broker = PaperBroker()
 
         broker.submit_order("BTC", "sell", 0.3, 40000.0)
@@ -44,6 +53,7 @@ class TestPaperBroker:
 
     def test_equity_calculation(self):
         from src.execution.paper_broker import PaperBroker
+
         broker = PaperBroker(slippage_bps=0, commission_bps=0)
 
         broker.submit_order("BTC", "buy", 1.0, 40000.0)
@@ -53,6 +63,7 @@ class TestPaperBroker:
 
     def test_flatten_all(self):
         from src.execution.paper_broker import PaperBroker
+
         broker = PaperBroker()
 
         broker.submit_order("BTC", "buy", 0.5, 40000.0)

@@ -1,4 +1,5 @@
 """Order router: dispatches orders to paper broker or live exchange."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -32,19 +33,32 @@ class OrderRouter:
     def set_price(self, symbol: str, price: float) -> None:
         self.paper_broker.set_price(symbol, price)
 
-    def submit_order(self, symbol: str, side: str, quantity: float,
-                     order_type: str = "market", price: float | None = None,
-                     reason: str = "") -> dict[str, Any]:
+    def submit_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        order_type: str = "market",
+        price: float | None = None,
+        reason: str = "",
+    ) -> dict[str, Any]:
         if self.is_paper:
             return self.paper_broker.submit_order(
-                symbol=symbol, side=side, quantity=quantity,
-                order_type=order_type, price=price, reason=reason,
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                order_type=order_type,
+                price=price,
+                reason=reason,
             )
         else:
             logger.info("live_order_attempt", symbol=symbol, side=side, qty=quantity)
             return self._live_adapter.submit_order(
-                symbol=symbol, side=side, quantity=quantity,
-                order_type=order_type, price=price,
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                order_type=order_type,
+                price=price,
             )
 
     def flatten_all(self, reason: str = "risk_breach") -> list[dict[str, Any]]:

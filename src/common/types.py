@@ -1,9 +1,9 @@
 """Shared type definitions and enums."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -56,6 +56,7 @@ class RegimeLabel(str, Enum):
 
 class Signal(BaseModel):
     """A trading signal from one model for one horizon."""
+
     timestamp: datetime
     symbol: str = "BTC"
     horizon: int
@@ -69,6 +70,7 @@ class Signal(BaseModel):
 
 class TradeDecision(BaseModel):
     """Final aggregated trade decision."""
+
     timestamp: datetime
     symbol: str = "BTC"
     target_side: int  # -1, 0, 1

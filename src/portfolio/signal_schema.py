@@ -1,14 +1,15 @@
 """Signal schema and helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class ModelSignal(BaseModel):
     """Signal from a single model."""
+
     model_id: str
     horizon: int
     side: int  # -1, 0, 1
@@ -21,6 +22,7 @@ class ModelSignal(BaseModel):
 
 class AggregatedSignal(BaseModel):
     """Aggregated signal from ensemble."""
+
     timestamp: datetime
     symbol: str = "BTC"
     target_side: int  # -1, 0, 1

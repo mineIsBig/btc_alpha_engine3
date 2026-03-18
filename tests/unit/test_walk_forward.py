@@ -10,6 +10,7 @@ Covers:
 - Regime-dependent slippage with vol multiplier, liquidation adder,
   commission scaling, and cost breakdown
 """
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -26,8 +27,12 @@ class TestPurgedWalkForward:
         timestamps = pd.Series([start + timedelta(hours=i) for i in range(n)])
 
         splitter = PurgedWalkForward(
-            train_days=30, test_days=7, purge_hours=24,
-            embargo_hours=12, step_days=7, min_train_samples=100,
+            train_days=30,
+            test_days=7,
+            purge_hours=24,
+            embargo_hours=12,
+            step_days=7,
+            min_train_samples=100,
         )
 
         for fold in splitter.split(timestamps):
@@ -45,8 +50,12 @@ class TestPurgedWalkForward:
         timestamps = pd.Series([start + timedelta(hours=i) for i in range(n)])
 
         splitter = PurgedWalkForward(
-            train_days=30, test_days=7, purge_hours=48,
-            embargo_hours=12, step_days=7, min_train_samples=100,
+            train_days=30,
+            test_days=7,
+            purge_hours=48,
+            embargo_hours=12,
+            step_days=7,
+            min_train_samples=100,
         )
 
         for fold in splitter.split(timestamps):
@@ -64,8 +73,12 @@ class TestPurgedWalkForward:
         timestamps = pd.Series([start + timedelta(hours=i) for i in range(n)])
 
         splitter = PurgedWalkForward(
-            train_days=30, test_days=7, purge_hours=24,
-            embargo_hours=12, step_days=7, min_train_samples=100,
+            train_days=30,
+            test_days=7,
+            purge_hours=24,
+            embargo_hours=12,
+            step_days=7,
+            min_train_samples=100,
         )
 
         for fold in splitter.split(timestamps):
@@ -81,8 +94,12 @@ class TestPurgedWalkForward:
         timestamps = pd.Series([start + timedelta(hours=i) for i in range(n)])
 
         splitter = PurgedWalkForward(
-            train_days=30, test_days=7, purge_hours=24,
-            embargo_hours=12, step_days=7, min_train_samples=100,
+            train_days=30,
+            test_days=7,
+            purge_hours=24,
+            embargo_hours=12,
+            step_days=7,
+            min_train_samples=100,
         )
 
         n_folds = splitter.get_n_folds(timestamps)
@@ -115,7 +132,10 @@ class TestDynamicPurge:
 
     def test_purge_never_below_minimum(self):
         """Even with small base, purge never goes below MIN_PURGE_HOURS."""
-        from src.research.purged_walk_forward import compute_purge_hours, MIN_PURGE_HOURS
+        from src.research.purged_walk_forward import (
+            compute_purge_hours,
+            MIN_PURGE_HOURS,
+        )
 
         assert compute_purge_hours(10, horizon=1) == MIN_PURGE_HOURS
         assert compute_purge_hours(0, horizon=None) == MIN_PURGE_HOURS
@@ -175,8 +195,12 @@ class TestDynamicPurge:
         timestamps = pd.Series([start + timedelta(hours=i) for i in range(n)])
 
         splitter = PurgedWalkForward(
-            train_days=30, test_days=7, purge_hours=48,
-            embargo_hours=12, step_days=7, min_train_samples=100,
+            train_days=30,
+            test_days=7,
+            purge_hours=48,
+            embargo_hours=12,
+            step_days=7,
+            min_train_samples=100,
             horizon=24,
         )
 
@@ -187,7 +211,9 @@ class TestDynamicPurge:
             train_end_ts = timestamps.iloc[fold.train_indices[-1]]
             test_start_ts = timestamps.iloc[fold.test_indices[0]]
             gap = (test_start_ts - train_end_ts).total_seconds() / 3600
-            assert gap >= 72, f"Fold {fold.fold_idx}: purge gap {gap}h < 72h for 24h horizon"
+            assert (
+                gap >= 72
+            ), f"Fold {fold.fold_idx}: purge gap {gap}h < 72h for 24h horizon"
 
 
 class TestSelectionMultipleComparisons:
@@ -257,12 +283,20 @@ class TestSelectionMultipleComparisons:
         # Create 20 models all with marginal Sharpe 0.55
         results = []
         for i in range(20):
-            results.append({
-                "model_id": f"model_{i}",
-                "folds": [{"sharpe_ratio": 0.55, "accuracy": 0.55,
-                           "breach_rate": 0.0, "max_drawdown": -0.05}
-                          for _ in range(5)],
-            })
+            results.append(
+                {
+                    "model_id": f"model_{i}",
+                    "folds": [
+                        {
+                            "sharpe_ratio": 0.55,
+                            "accuracy": 0.55,
+                            "breach_rate": 0.0,
+                            "max_drawdown": -0.05,
+                        }
+                        for _ in range(5)
+                    ],
+                }
+            )
 
         # With correction: adjusted threshold ≈ 0.5 + 0.1*ln(20) ≈ 0.80
         # So 0.55 avg Sharpe should NOT pass
@@ -280,12 +314,20 @@ class TestSelectionMultipleComparisons:
         # Models with high Sharpe but marginal accuracy 0.53
         results = []
         for i in range(20):
-            results.append({
-                "model_id": f"model_{i}",
-                "folds": [{"sharpe_ratio": 2.0, "accuracy": 0.53,
-                           "breach_rate": 0.0, "max_drawdown": -0.02}
-                          for _ in range(5)],
-            })
+            results.append(
+                {
+                    "model_id": f"model_{i}",
+                    "folds": [
+                        {
+                            "sharpe_ratio": 2.0,
+                            "accuracy": 0.53,
+                            "breach_rate": 0.0,
+                            "max_drawdown": -0.02,
+                        }
+                        for _ in range(5)
+                    ],
+                }
+            )
 
         # With correction: accuracy threshold ≈ 0.52 + (0.48)*0.05*ln(20) ≈ 0.592
         # 0.53 < 0.592, should fail
@@ -318,7 +360,10 @@ class TestRegimeSlippage:
 
     def test_multiplier_capped(self):
         """Multiplier should never exceed MAX_SLIPPAGE_MULTIPLIER."""
-        from src.execution.slippage_model import compute_volatility_multiplier, MAX_SLIPPAGE_MULTIPLIER
+        from src.execution.slippage_model import (
+            compute_volatility_multiplier,
+            MAX_SLIPPAGE_MULTIPLIER,
+        )
 
         extreme_returns = np.random.normal(0, 0.05, 24)  # 5% hourly vol
         mult = compute_volatility_multiplier(extreme_returns, baseline_vol=0.002)
@@ -403,11 +448,13 @@ class TestRegimeSlippage:
 
         mid = 50000.0
         calm_fill = apply_regime_slippage(
-            mid, is_buy=True,
+            mid,
+            is_buy=True,
             recent_returns=np.random.normal(0, 0.001, 24),
         )
         volatile_fill = apply_regime_slippage(
-            mid, is_buy=True,
+            mid,
+            is_buy=True,
             recent_returns=np.random.normal(0, 0.01, 24),
         )
         # Both above mid (buy), but volatile fill should be higher (worse)

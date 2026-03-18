@@ -11,6 +11,7 @@ We use Chutes for:
 2. Foundation model inference for time-series (when available)
 3. Embeddings for regime similarity search
 """
+
 from __future__ import annotations
 
 import json
@@ -39,8 +40,12 @@ class ChutesClient:
     ):
         settings = get_settings()
         self.api_key = api_key or getattr(settings, "chutes_api_key", "")
-        self.base_url = (base_url or getattr(settings, "chutes_base_url", "https://chutes.ai/api/v1")).rstrip("/")
-        self.model = model or getattr(settings, "chutes_model", "deepseek-ai/DeepSeek-V3-0324")
+        self.base_url = (
+            base_url or getattr(settings, "chutes_base_url", "https://chutes.ai/api/v1")
+        ).rstrip("/")
+        self.model = model or getattr(
+            settings, "chutes_model", "deepseek-ai/DeepSeek-V3-0324"
+        )
 
         self._client = httpx.Client(
             timeout=180.0,

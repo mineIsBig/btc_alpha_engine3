@@ -1,4 +1,5 @@
 """Price-derived features: returns, volatility, trend indicators."""
+
 from __future__ import annotations
 
 import numpy as np

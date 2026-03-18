@@ -1,9 +1,9 @@
 """Data validation utilities for ingested data."""
+
 from __future__ import annotations
 
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 from src.common.logging import get_logger
@@ -80,7 +80,11 @@ def validate_liquidation_data(df: pd.DataFrame, source: str = "") -> pd.DataFram
     df = df.dropna(subset=["timestamp"])
 
     # Liquidation values should be non-negative
-    for col in ["long_liquidations_usd", "short_liquidations_usd", "total_liquidations_usd"]:
+    for col in [
+        "long_liquidations_usd",
+        "short_liquidations_usd",
+        "total_liquidations_usd",
+    ]:
         if col in df.columns:
             df[col] = df[col].clip(lower=0)
 
@@ -101,18 +105,23 @@ def check_data_freshness(
     latest = pd.to_datetime(df["timestamp"]).max()
     if latest.tzinfo is None:
         from datetime import timezone
+
         latest = latest.replace(tzinfo=timezone.utc)
 
     now = datetime.now(tz=latest.tzinfo)
     gap_hours = (now - latest).total_seconds() / 3600
 
     if gap_hours > max_gap_hours:
-        logger.warning("stale_data", gap_hours=gap_hours, max=max_gap_hours, source=source)
+        logger.warning(
+            "stale_data", gap_hours=gap_hours, max=max_gap_hours, source=source
+        )
         return False
     return True
 
 
-def check_gaps(df: pd.DataFrame, expected_freq_hours: int = 1) -> list[tuple[datetime, datetime]]:
+def check_gaps(
+    df: pd.DataFrame, expected_freq_hours: int = 1
+) -> list[tuple[datetime, datetime]]:
     """Find gaps in hourly data. Returns list of (gap_start, gap_end) tuples."""
     if len(df) < 2:
         return []

@@ -2,6 +2,7 @@
 
 This is the agent's output. No live trades are executed — only signal recommendations.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,12 +16,15 @@ class SignalOutput(BaseModel):
 
     This is purely advisory — no orders are placed.
     """
+
     timestamp: datetime
     symbol: str = "BTC"
 
     # Direction and sizing
     direction: str = Field(..., description="'long', 'short', or 'flat'")
-    position_size_pct: float = Field(0.0, ge=0.0, le=1.0, description="Position size as fraction of equity")
+    position_size_pct: float = Field(
+        0.0, ge=0.0, le=1.0, description="Position size as fraction of equity"
+    )
     position_size_usd: float = Field(0.0, ge=0.0, description="Notional USD size")
 
     # Price levels
@@ -30,7 +34,9 @@ class SignalOutput(BaseModel):
 
     # Expected returns
     expected_return_pct: float = Field(0.0, description="Expected return in %")
-    expected_holding_hours: int = Field(0, description="Expected holding period in hours")
+    expected_holding_hours: int = Field(
+        0, description="Expected holding period in hours"
+    )
     risk_reward_ratio: float = Field(0.0, description="Risk/reward ratio")
 
     # Confidence and regime
@@ -53,8 +59,16 @@ class SignalOutput(BaseModel):
         if self.direction == "flat":
             return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M')}] FLAT — no trade recommended. Reason: {self.reasoning}"
 
-        tp_dist = abs(self.take_profit - self.entry_price) / self.entry_price * 100 if self.entry_price > 0 else 0
-        sl_dist = abs(self.stop_loss - self.entry_price) / self.entry_price * 100 if self.entry_price > 0 else 0
+        tp_dist = (
+            abs(self.take_profit - self.entry_price) / self.entry_price * 100
+            if self.entry_price > 0
+            else 0
+        )
+        sl_dist = (
+            abs(self.stop_loss - self.entry_price) / self.entry_price * 100
+            if self.entry_price > 0
+            else 0
+        )
 
         return (
             f"[{self.timestamp.strftime('%Y-%m-%d %H:%M')}] {self.direction.upper()} BTC\n"
@@ -69,6 +83,7 @@ class SignalOutput(BaseModel):
 
 class AgentState(BaseModel):
     """Persisted state of the autonomous agent between iterations."""
+
     iteration: int = 0
     cumulative_pnl: float = 0.0
     rolling_sharpe: float = 0.0

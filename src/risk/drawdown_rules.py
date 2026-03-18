@@ -13,10 +13,10 @@ Trading day resets at 00:00 UTC.
 EOD high water mark updates ONLY from end-of-day equity, NOT intraday peaks.
 Intraday checks happen on every account update.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime
 
 from src.common.config import get_settings
 from src.common.logging import get_logger
@@ -38,8 +38,12 @@ class DrawdownRuleEngine:
         auto_reset_next_day: bool = False,
     ):
         settings = get_settings()
-        self.daily_loss_limit_pct = daily_loss_limit_pct or settings.daily_loss_limit_pct
-        self.eod_trailing_loss_limit_pct = eod_trailing_loss_limit_pct or settings.eod_trailing_loss_limit_pct
+        self.daily_loss_limit_pct = (
+            daily_loss_limit_pct or settings.daily_loss_limit_pct
+        )
+        self.eod_trailing_loss_limit_pct = (
+            eod_trailing_loss_limit_pct or settings.eod_trailing_loss_limit_pct
+        )
         self.flatten_on_breach = flatten_on_breach
         self.auto_reset_next_day = auto_reset_next_day
 
@@ -74,7 +78,9 @@ class DrawdownRuleEngine:
             # Update HWM only from end-of-day equity (the equity we see at day reset)
             self.eod_high_water_mark = max(self.eod_high_water_mark, equity)
 
-        self.eod_trailing_floor = self.eod_high_water_mark * (1.0 - self.eod_trailing_loss_limit_pct)
+        self.eod_trailing_floor = self.eod_high_water_mark * (
+            1.0 - self.eod_trailing_loss_limit_pct
+        )
 
         # Reset trading permission if auto-reset enabled
         if self.auto_reset_next_day or self.current_trading_date is None:
@@ -133,7 +139,9 @@ class DrawdownRuleEngine:
         EOD HWM updates ONLY here, not from intraday peaks.
         """
         self.eod_high_water_mark = max(self.eod_high_water_mark, closing_equity)
-        self.eod_trailing_floor = self.eod_high_water_mark * (1.0 - self.eod_trailing_loss_limit_pct)
+        self.eod_trailing_floor = self.eod_high_water_mark * (
+            1.0 - self.eod_trailing_loss_limit_pct
+        )
         logger.info(
             "eod_update",
             closing_equity=closing_equity,
@@ -182,9 +190,11 @@ class DrawdownRuleEngine:
 
         try:
             with session_scope() as session:
-                existing = session.query(DayState).filter_by(
-                    trading_date=self.current_trading_date
-                ).first()
+                existing = (
+                    session.query(DayState)
+                    .filter_by(trading_date=self.current_trading_date)
+                    .first()
+                )
 
                 if existing:
                     existing.opening_equity = self.opening_equity
@@ -196,17 +206,19 @@ class DrawdownRuleEngine:
                     existing.breach_time = self.breach_time
                     existing.last_updated = utc_now()
                 else:
-                    session.add(DayState(
-                        trading_date=self.current_trading_date,
-                        opening_equity=self.opening_equity,
-                        eod_high_water_mark=self.eod_high_water_mark,
-                        daily_loss_floor=self.daily_loss_floor,
-                        eod_trailing_floor=self.eod_trailing_floor,
-                        can_trade=self.can_trade,
-                        breach_reason=self.breach_reason,
-                        breach_time=self.breach_time,
-                        last_updated=utc_now(),
-                    ))
+                    session.add(
+                        DayState(
+                            trading_date=self.current_trading_date,
+                            opening_equity=self.opening_equity,
+                            eod_high_water_mark=self.eod_high_water_mark,
+                            daily_loss_floor=self.daily_loss_floor,
+                            eod_trailing_floor=self.eod_trailing_floor,
+                            can_trade=self.can_trade,
+                            breach_reason=self.breach_reason,
+                            breach_time=self.breach_time,
+                            last_updated=utc_now(),
+                        )
+                    )
         except Exception as e:
             logger.error("persist_day_state_failed", error=str(e))
 
@@ -225,6 +237,8 @@ class DrawdownRuleEngine:
                     self.breach_reason = state.breach_reason
                     self.breach_time = state.breach_time
                     self.current_trading_date = today
-                    logger.info("day_state_loaded", date=today, can_trade=self.can_trade)
+                    logger.info(
+                        "day_state_loaded", date=today, can_trade=self.can_trade
+                    )
         except Exception as e:
             logger.error("load_day_state_failed", error=str(e))

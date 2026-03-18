@@ -1,4 +1,5 @@
 """Regime gate model: adjusts signals based on detected market regime."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -35,19 +36,29 @@ class RegimeGateModel(BaseAlphaModel):
         self._label_encoder = LabelEncoder()
 
     def _build_model(self) -> Any:
-        return Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", RandomForestClassifier(
-                n_estimators=self.params.get("n_estimators", 200),
-                max_depth=self.params.get("max_depth", 8),
-                min_samples_leaf=self.params.get("min_samples_leaf", 30),
-                class_weight="balanced",
-                random_state=42,
-                n_jobs=-1,
-            )),
-        ])
+        return Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "clf",
+                    RandomForestClassifier(
+                        n_estimators=self.params.get("n_estimators", 200),
+                        max_depth=self.params.get("max_depth", 8),
+                        min_samples_leaf=self.params.get("min_samples_leaf", 30),
+                        class_weight="balanced",
+                        random_state=42,
+                        n_jobs=-1,
+                    ),
+                ),
+            ]
+        )
 
-    def fit(self, X: pd.DataFrame | np.ndarray, y: np.ndarray, feature_names: list[str] | None = None) -> None:
+    def fit(
+        self,
+        X: pd.DataFrame | np.ndarray,
+        y: np.ndarray,
+        feature_names: list[str] | None = None,
+    ) -> None:
         """Fit regime classifier. y should be string regime labels."""
         y_encoded = self._label_encoder.fit_transform(y)
         super().fit(X, y_encoded, feature_names)
@@ -73,7 +84,9 @@ class RegimeGateModel(BaseAlphaModel):
         Returns:
             multiplier in [0, 2] range
         """
-        multipliers = REGIME_SIGNAL_MULTIPLIERS.get(regime, REGIME_SIGNAL_MULTIPLIERS["neutral"])
+        multipliers = REGIME_SIGNAL_MULTIPLIERS.get(
+            regime, REGIME_SIGNAL_MULTIPLIERS["neutral"]
+        )
         if side == 1:
             return multipliers["long"]
         elif side == -1:

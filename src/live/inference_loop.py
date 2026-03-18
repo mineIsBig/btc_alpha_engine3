@@ -1,10 +1,9 @@
 """Inference loop: runs model predictions on a schedule."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from src.common.logging import get_logger
@@ -42,6 +41,7 @@ class InferenceLoop:
             # Load latest features from DB
             from src.features.feature_pipeline import load_raw_data
             from datetime import timedelta
+
             raw = load_raw_data(start=ts - timedelta(days=10), end=ts)
             features_df = build_features(raw_data=raw)
 
@@ -73,14 +73,18 @@ class InferenceLoop:
                     available = [c for c in feat_cols if c in latest_row.columns]
 
                     if len(available) < len(feat_cols) * 0.5:
-                        logger.warning("insufficient_features", model_id=model_info["model_id"])
+                        logger.warning(
+                            "insufficient_features", model_id=model_info["model_id"]
+                        )
                         continue
 
                     X = latest_row[available].fillna(0)
                     sig = model.get_signal(X)
 
                     # Apply regime gating
-                    regime_mult = RegimeGateModel.get_signal_multiplier(regime, sig["side"])
+                    regime_mult = RegimeGateModel.get_signal_multiplier(
+                        regime, sig["side"]
+                    )
                     adjusted_conf = sig["confidence"] * regime_mult
 
                     signal = ModelSignal(
@@ -96,23 +100,29 @@ class InferenceLoop:
 
                     # Persist signal
                     with session_scope() as session:
-                        session.add(SignalRecord(
-                            timestamp=ts,
-                            symbol="BTC",
-                            horizon=horizon,
-                            model_id=model_info["model_id"],
-                            side=sig["side"],
-                            probability=sig["probability"],
-                            confidence=adjusted_conf,
-                            regime=regime,
-                        ))
+                        session.add(
+                            SignalRecord(
+                                timestamp=ts,
+                                symbol="BTC",
+                                horizon=horizon,
+                                model_id=model_info["model_id"],
+                                side=sig["side"],
+                                probability=sig["probability"],
+                                confidence=adjusted_conf,
+                                regime=regime,
+                            )
+                        )
 
                 except Exception as e:
-                    logger.error("inference_error", model_id=model_info["model_id"], error=str(e))
+                    logger.error(
+                        "inference_error", model_id=model_info["model_id"], error=str(e)
+                    )
 
             if horizon_signals:
                 signals_by_horizon[horizon] = horizon_signals
 
         total = sum(len(v) for v in signals_by_horizon.values())
-        logger.info("inference_complete", n_signals=total, n_horizons=len(signals_by_horizon))
+        logger.info(
+            "inference_complete", n_signals=total, n_horizons=len(signals_by_horizon)
+        )
         return signals_by_horizon

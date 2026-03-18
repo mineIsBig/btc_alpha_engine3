@@ -1,11 +1,12 @@
 """Tests for autonomous agent, compute dispatcher, signal output, and monitoring."""
-import pytest
+
 from datetime import datetime, timezone
 
 
 class TestSignalOutput:
     def test_flat_signal(self):
         from src.agent.signal_output import SignalOutput
+
         sig = SignalOutput(
             timestamp=datetime.now(timezone.utc),
             direction="flat",
@@ -18,6 +19,7 @@ class TestSignalOutput:
 
     def test_long_signal(self):
         from src.agent.signal_output import SignalOutput
+
         sig = SignalOutput(
             timestamp=datetime.now(timezone.utc),
             direction="long",
@@ -43,6 +45,7 @@ class TestSignalOutput:
 
     def test_short_signal(self):
         from src.agent.signal_output import SignalOutput
+
         sig = SignalOutput(
             timestamp=datetime.now(timezone.utc),
             direction="short",
@@ -62,6 +65,7 @@ class TestSignalOutput:
 
     def test_signal_json_serialization(self):
         from src.agent.signal_output import SignalOutput
+
         sig = SignalOutput(
             timestamp=datetime.now(timezone.utc),
             direction="long",
@@ -79,6 +83,7 @@ class TestSignalOutput:
 class TestAgentState:
     def test_state_persistence(self, tmp_path):
         from src.agent.signal_output import AgentState
+
         state = AgentState(
             iteration=5,
             cumulative_pnl=1500.0,
@@ -101,6 +106,7 @@ class TestComputeDispatcher:
     def test_dispatcher_init(self):
         """Dispatcher should initialize without crashing even if providers are unavailable."""
         from src.compute.dispatcher import ComputeDispatcher
+
         d = ComputeDispatcher()
         health = d.health()
         assert isinstance(health, dict)
@@ -110,6 +116,7 @@ class TestComputeDispatcher:
 
     def test_targon_client_init(self):
         from src.compute.targon_client import TargonClient
+
         client = TargonClient(api_key="test", base_url="http://localhost:9999/v1")
         assert client.api_key == "test"
         assert "localhost" in client.base_url
@@ -117,6 +124,7 @@ class TestComputeDispatcher:
 
     def test_chutes_client_init(self):
         from src.compute.chutes_client import ChutesClient
+
         client = ChutesClient(api_key="test", base_url="http://localhost:9999/v1")
         assert client.api_key == "test"
         client.close()
@@ -144,13 +152,19 @@ class TestMetricsCollector:
 
     def test_record_iteration(self):
         from src.monitoring.prometheus_metrics import MetricsCollector
+
         collector = MetricsCollector(port=0)
-        collector.record_iteration(iteration=1, duration=45.2, sharpe=1.1, drawdown=-0.03)
+        collector.record_iteration(
+            iteration=1, duration=45.2, sharpe=1.1, drawdown=-0.03
+        )
 
     def test_metrics_text_output(self):
         from src.monitoring.prometheus_metrics import MetricsCollector
+
         collector = MetricsCollector(port=0)
-        collector.record_iteration(iteration=1, duration=10.0, sharpe=0.8, drawdown=-0.02)
+        collector.record_iteration(
+            iteration=1, duration=10.0, sharpe=0.8, drawdown=-0.02
+        )
         text = collector.get_metrics_text()
         assert isinstance(text, str)
         # Should contain some metric names
@@ -161,6 +175,7 @@ class TestAlphaAgentUnit:
     def test_agent_creates_flat_signal_without_models(self):
         """Agent should produce a flat signal when no models are promoted."""
         from src.agent.alpha_agent import AlphaAgent
+
         agent = AlphaAgent()
         # Override compute to avoid LLM calls
         agent.compute = _MockDispatcher()
@@ -174,6 +189,7 @@ class TestAlphaAgentUnit:
 
     def test_agent_creates_long_signal(self):
         from src.agent.alpha_agent import AlphaAgent
+
         agent = AlphaAgent()
         agent.compute = _MockDispatcher()
 
@@ -201,14 +217,23 @@ class TestAlphaAgentUnit:
 
 class _MockDispatcher:
     """Mock compute dispatcher that doesn't call any APIs."""
+
     def agent_inference(self, prompt, **kwargs):
         return '{"analysis": "mock", "weaknesses_found": [], "proposed_changes": []}'
 
     def agent_inference_json(self, prompt, **kwargs):
-        return {"analysis": "mock", "weaknesses_found": [], "proposed_changes": [],
-                "priority": "test", "expected_impact": "none",
-                "reflection": "mock", "weaknesses": [], "regime_assessment": "neutral",
-                "alpha_leakage": "none", "next_priorities": []}
+        return {
+            "analysis": "mock",
+            "weaknesses_found": [],
+            "proposed_changes": [],
+            "priority": "test",
+            "expected_impact": "none",
+            "reflection": "mock",
+            "weaknesses": [],
+            "regime_assessment": "neutral",
+            "alpha_leakage": "none",
+            "next_priorities": [],
+        }
 
     def health(self):
         return {"targon": False, "chutes": False, "lium": False}

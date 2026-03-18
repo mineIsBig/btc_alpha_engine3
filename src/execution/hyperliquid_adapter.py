@@ -4,6 +4,7 @@ WARNING: Live order submission requires EIP-712 signing which is not
 fully implemented. This adapter is for shadow/monitoring mode only.
 Set LIVE_TRADING_ENABLED=true only after verifying signing logic.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -24,7 +25,9 @@ class HyperliquidAdapter:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.client = HyperliquidClient()
-        self.live_enabled = self.settings.live_trading_enabled and not self.settings.paper_mode
+        self.live_enabled = (
+            self.settings.live_trading_enabled and not self.settings.paper_mode
+        )
 
     @property
     def is_live(self) -> bool:
@@ -42,21 +45,29 @@ class HyperliquidAdapter:
         for ap in state.get("assetPositions", []):
             p = ap.get("position", {})
             if float(p.get("szi", 0)) != 0:
-                positions.append({
-                    "symbol": p.get("coin", ""),
-                    "side": "long" if float(p.get("szi", 0)) > 0 else "short",
-                    "quantity": abs(float(p.get("szi", 0))),
-                    "avg_entry_price": float(p.get("entryPx", 0)),
-                    "unrealized_pnl": float(p.get("unrealizedPnl", 0)),
-                })
+                positions.append(
+                    {
+                        "symbol": p.get("coin", ""),
+                        "side": "long" if float(p.get("szi", 0)) > 0 else "short",
+                        "quantity": abs(float(p.get("szi", 0))),
+                        "avg_entry_price": float(p.get("entryPx", 0)),
+                        "unrealized_pnl": float(p.get("unrealizedPnl", 0)),
+                    }
+                )
         return {
             "equity": float(margin.get("accountValue", 0)),
             "margin_used": float(margin.get("totalMarginUsed", 0)),
             "positions": positions,
         }
 
-    def submit_order(self, symbol: str, side: str, quantity: float,
-                     order_type: str = "market", price: float | None = None) -> dict[str, Any]:
+    def submit_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        order_type: str = "market",
+        price: float | None = None,
+    ) -> dict[str, Any]:
         """Submit order to Hyperliquid.
 
         Only works if live_trading_enabled=True and wallet is configured.
@@ -71,8 +82,11 @@ class HyperliquidAdapter:
         is_buy = side == "buy"
         # TODO: Implement when EIP-712 signing is verified
         return self.client.place_order(
-            symbol=symbol, is_buy=is_buy, size=quantity,
-            price=price, order_type=order_type,
+            symbol=symbol,
+            is_buy=is_buy,
+            size=quantity,
+            price=price,
+            order_type=order_type,
         )
 
     def cancel_all(self, symbol: str | None = None) -> dict[str, Any]:

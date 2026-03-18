@@ -1,4 +1,5 @@
 """Gradient boosting models: LightGBM and XGBoost."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -16,7 +17,9 @@ class LightGBMModel(BaseAlphaModel):
         try:
             import lightgbm as lgb
         except ImportError:
-            raise ImportError("lightgbm not installed. Install with: pip install lightgbm")
+            raise ImportError(
+                "lightgbm not installed. Install with: pip install lightgbm"
+            )
 
         return lgb.LGBMClassifier(
             n_estimators=self.params.get("n_estimators", 300),
@@ -42,7 +45,9 @@ class XGBoostModel(BaseAlphaModel):
         try:
             import xgboost as xgb
         except ImportError:
-            raise ImportError("xgboost not installed. Install with: pip install xgboost")
+            raise ImportError(
+                "xgboost not installed. Install with: pip install xgboost"
+            )
 
         return xgb.XGBClassifier(
             n_estimators=self.params.get("n_estimators", 300),
@@ -62,6 +67,7 @@ class XGBoostModel(BaseAlphaModel):
     def fit(self, X, y, feature_names=None):
         """Override to remap labels for XGBoost (requires 0-indexed classes)."""
         import numpy as np
+
         # XGBoost needs labels starting from 0
         y_mapped = y.copy()
         unique_labels = np.unique(y)
@@ -72,6 +78,7 @@ class XGBoostModel(BaseAlphaModel):
 
     def predict(self, X):
         import numpy as np
+
         raw = super().predict(X)
         if hasattr(self, "_label_inv_map"):
             return np.array([self._label_inv_map.get(int(v), v) for v in raw])

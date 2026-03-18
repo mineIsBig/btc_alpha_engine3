@@ -3,6 +3,7 @@
 Supports dynamic parameter evolution via EvolutionConfig. The agent can
 adjust consensus thresholds, weighting power, and confidence gates at runtime.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,6 +26,7 @@ def _load_ensemble_params() -> dict[str, float | int]:
     }
     try:
         from src.agent.evolution_config import load_evolution_config
+
         config = load_evolution_config()
         return {
             "min_consensus_pct": config.ensemble.min_consensus_pct,
@@ -49,15 +51,24 @@ class EnsembleAggregator:
         sharpe_weight_power: float | None = None,
         use_evolution_config: bool = True,
     ):
-        if use_evolution_config and all(v is None for v in [min_consensus_pct, min_avg_confidence, sharpe_weight_power]):
+        if use_evolution_config and all(
+            v is None
+            for v in [min_consensus_pct, min_avg_confidence, sharpe_weight_power]
+        ):
             params = _load_ensemble_params()
             self.min_consensus_pct = params["min_consensus_pct"]
             self.min_avg_confidence = params["min_avg_confidence"]
             self.sharpe_weight_power = params["sharpe_weight_power"]
         else:
-            self.min_consensus_pct = min_consensus_pct if min_consensus_pct is not None else 0.5
-            self.min_avg_confidence = min_avg_confidence if min_avg_confidence is not None else 0.1
-            self.sharpe_weight_power = sharpe_weight_power if sharpe_weight_power is not None else 1.5
+            self.min_consensus_pct = (
+                min_consensus_pct if min_consensus_pct is not None else 0.5
+            )
+            self.min_avg_confidence = (
+                min_avg_confidence if min_avg_confidence is not None else 0.1
+            )
+            self.sharpe_weight_power = (
+                sharpe_weight_power if sharpe_weight_power is not None else 1.5
+            )
 
     def aggregate(
         self,
@@ -85,7 +96,7 @@ class EnsembleAggregator:
 
         # Compute weights from OOS Sharpe
         sharpes = np.array([max(s.oos_sharpe, 0.01) for s in signals])
-        weights = sharpes ** self.sharpe_weight_power
+        weights = sharpes**self.sharpe_weight_power
         weights = weights / weights.sum()
 
         # Weighted vote
@@ -124,7 +135,9 @@ class EnsembleAggregator:
         # Gating
         if consensus_pct < self.min_consensus_pct:
             target_side = 0
-            reason = f"consensus_too_low ({consensus_pct:.2f} < {self.min_consensus_pct})"
+            reason = (
+                f"consensus_too_low ({consensus_pct:.2f} < {self.min_consensus_pct})"
+            )
         elif avg_conf < self.min_avg_confidence:
             target_side = 0
             reason = f"confidence_too_low ({avg_conf:.2f} < {self.min_avg_confidence})"
@@ -136,7 +149,9 @@ class EnsembleAggregator:
         regime_counts: dict[str, int] = {}
         for s in signals:
             regime_counts[s.regime] = regime_counts.get(s.regime, 0) + 1
-        regime = max(regime_counts, key=regime_counts.get) if regime_counts else "neutral"
+        regime = (
+            max(regime_counts, key=regime_counts.get) if regime_counts else "neutral"
+        )
 
         return AggregatedSignal(
             timestamp=timestamp,

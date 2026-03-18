@@ -1,9 +1,9 @@
 """Compute dispatcher: routes tasks to Targon (CPU/inference), Lium (GPU training), or Chutes (agent inference)."""
+
 from __future__ import annotations
 
 from typing import Any
 
-from src.common.config import get_settings
 from src.common.logging import get_logger
 from src.compute.targon_client import TargonClient
 from src.compute.lium_client import LiumClient
@@ -91,7 +91,9 @@ class ComputeDispatcher:
 
         raise RuntimeError("No inference provider available (Chutes or Targon)")
 
-    def agent_inference_json(self, prompt: str, system: str = "", **kwargs: Any) -> dict:
+    def agent_inference_json(
+        self, prompt: str, system: str = "", **kwargs: Any
+    ) -> dict:
         """Route structured JSON inference."""
         self._lazy_init()
         if self._chutes:

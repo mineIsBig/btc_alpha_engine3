@@ -11,23 +11,32 @@ Hyperliquid fallback coverage:
 - Long/short ratio: NO fallback
 - Taker buy/sell: NO fallback
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-from sqlalchemy import select, func
+from sqlalchemy import func
 
 from src.common.logging import get_logger
 from src.common.time_utils import utc_now
 from src.data.coinalyze_client import CoinalyzeClient, CoinalyzeRateLimitError
 from src.data.hyperliquid_client import HyperliquidClient
-from src.data.validators import validate_ohlc, validate_ratio_data, validate_liquidation_data
+from src.data.validators import (
+    validate_ohlc,
+    validate_ratio_data,
+    validate_liquidation_data,
+)
 from src.data.resampler import align_to_hourly
 from src.storage.database import session_scope
 from src.storage.models import (
-    PriceBar1h, CGFunding1h, CGOI1h, CGLiquidations1h,
-    CGLongShort1h, CGTakerFlow1h,
+    PriceBar1h,
+    CGFunding1h,
+    CGOI1h,
+    CGLiquidations1h,
+    CGLongShort1h,
+    CGTakerFlow1h,
 )
 
 logger = get_logger(__name__)
@@ -69,7 +78,9 @@ def backfill_price_data(
 
         while current < end:
             chunk_end = min(current + timedelta(days=chunk_days), end)
-            logger.info("backfill_price", start=current.isoformat(), end=chunk_end.isoformat())
+            logger.info(
+                "backfill_price", start=current.isoformat(), end=chunk_end.isoformat()
+            )
 
             df = pd.DataFrame()
             source = "coinalyze"
@@ -77,14 +88,19 @@ def backfill_price_data(
             # Try Coinalyze first
             try:
                 df = ca_client.fetch_oi_ohlc(
-                    symbol=symbol, exchange=exchange,
-                    start_time=current, end_time=chunk_end, limit=500,
+                    symbol=symbol,
+                    exchange=exchange,
+                    start_time=current,
+                    end_time=chunk_end,
+                    limit=500,
                 )
             except CoinalyzeRateLimitError:
                 logger.warning("coinalyze_rate_limited_fallback_hl", dataset="price")
                 df = hl_client.fetch_candles_df(
-                    symbol=symbol, interval="1h",
-                    start_time=current, end_time=chunk_end,
+                    symbol=symbol,
+                    interval="1h",
+                    start_time=current,
+                    end_time=chunk_end,
                 )
                 source = "hyperliquid"
 
@@ -98,16 +114,18 @@ def backfill_price_data(
 
             rows = []
             for _, r in df.iterrows():
-                rows.append({
-                    "symbol": symbol,
-                    "timestamp": r["timestamp"].to_pydatetime(),
-                    "open": r["open"],
-                    "high": r["high"],
-                    "low": r["low"],
-                    "close": r["close"],
-                    "volume": r.get("volume", 0),
-                    "source": source,
-                })
+                rows.append(
+                    {
+                        "symbol": symbol,
+                        "timestamp": r["timestamp"].to_pydatetime(),
+                        "open": r["open"],
+                        "high": r["high"],
+                        "low": r["low"],
+                        "close": r["close"],
+                        "volume": r.get("volume", 0),
+                        "source": source,
+                    }
+                )
 
             with session_scope() as session:
                 n = _upsert_rows(session, PriceBar1h, rows, ["symbol", "timestamp"])
@@ -145,26 +163,40 @@ def backfill_funding(
             df = pd.DataFrame()
 
             try:
-                df = ca_client.fetch_funding_ohlc(symbol=symbol, exchange=exchange,
-                                                   start_time=current, end_time=chunk_end)
+                df = ca_client.fetch_funding_ohlc(
+                    symbol=symbol,
+                    exchange=exchange,
+                    start_time=current,
+                    end_time=chunk_end,
+                )
             except CoinalyzeRateLimitError:
                 logger.warning("coinalyze_rate_limited_fallback_hl", dataset="funding")
                 df = hl_client.fetch_funding_history(
-                    symbol=symbol, start_time=current, end_time=chunk_end,
+                    symbol=symbol,
+                    start_time=current,
+                    end_time=chunk_end,
                 )
 
             df = validate_ohlc(df, source="funding_backfill")
             df = align_to_hourly(df)
 
-            rows = [{
-                "symbol": symbol, "exchange": exchange,
-                "timestamp": r["timestamp"].to_pydatetime(),
-                "open": r["open"], "high": r["high"],
-                "low": r["low"], "close": r["close"],
-            } for _, r in df.iterrows()]
+            rows = [
+                {
+                    "symbol": symbol,
+                    "exchange": exchange,
+                    "timestamp": r["timestamp"].to_pydatetime(),
+                    "open": r["open"],
+                    "high": r["high"],
+                    "low": r["low"],
+                    "close": r["close"],
+                }
+                for _, r in df.iterrows()
+            ]
 
             with session_scope() as session:
-                n = _upsert_rows(session, CGFunding1h, rows, ["symbol", "exchange", "timestamp"])
+                n = _upsert_rows(
+                    session, CGFunding1h, rows, ["symbol", "exchange", "timestamp"]
+                )
                 total += n
             current = chunk_end
         return total
@@ -193,26 +225,41 @@ def backfill_oi(
             chunk_end = min(current + timedelta(days=30), end)
 
             try:
-                df = client.fetch_oi_ohlc(symbol=symbol, exchange=exchange,
-                                          start_time=current, end_time=chunk_end)
+                df = client.fetch_oi_ohlc(
+                    symbol=symbol,
+                    exchange=exchange,
+                    start_time=current,
+                    end_time=chunk_end,
+                )
             except CoinalyzeRateLimitError:
-                logger.warning("coinalyze_rate_limited_no_fallback", dataset="oi",
-                               msg="Hyperliquid does not provide historical OI")
+                logger.warning(
+                    "coinalyze_rate_limited_no_fallback",
+                    dataset="oi",
+                    msg="Hyperliquid does not provide historical OI",
+                )
                 current = chunk_end
                 continue
 
             df = validate_ohlc(df, source="oi_backfill")
             df = align_to_hourly(df)
 
-            rows = [{
-                "symbol": symbol, "exchange": exchange,
-                "timestamp": r["timestamp"].to_pydatetime(),
-                "open": r["open"], "high": r["high"],
-                "low": r["low"], "close": r["close"],
-            } for _, r in df.iterrows()]
+            rows = [
+                {
+                    "symbol": symbol,
+                    "exchange": exchange,
+                    "timestamp": r["timestamp"].to_pydatetime(),
+                    "open": r["open"],
+                    "high": r["high"],
+                    "low": r["low"],
+                    "close": r["close"],
+                }
+                for _, r in df.iterrows()
+            ]
 
             with session_scope() as session:
-                n = _upsert_rows(session, CGOI1h, rows, ["symbol", "exchange", "timestamp"])
+                n = _upsert_rows(
+                    session, CGOI1h, rows, ["symbol", "exchange", "timestamp"]
+                )
                 total += n
             current = chunk_end
         return total
@@ -239,28 +286,37 @@ def backfill_liquidations(
             chunk_end = min(current + timedelta(days=30), end)
 
             try:
-                df = client.fetch_liquidation_history(symbol=symbol,
-                                                      start_time=current, end_time=chunk_end)
+                df = client.fetch_liquidation_history(
+                    symbol=symbol, start_time=current, end_time=chunk_end
+                )
             except CoinalyzeRateLimitError:
-                logger.warning("coinalyze_rate_limited_no_fallback", dataset="liquidations",
-                               msg="Hyperliquid does not provide liquidation history")
+                logger.warning(
+                    "coinalyze_rate_limited_no_fallback",
+                    dataset="liquidations",
+                    msg="Hyperliquid does not provide liquidation history",
+                )
                 current = chunk_end
                 continue
 
             df = validate_liquidation_data(df, source="liq_backfill")
             df = align_to_hourly(df)
 
-            rows = [{
-                "symbol": symbol,
-                "timestamp": r["timestamp"].to_pydatetime(),
-                "long_liquidations_usd": r.get("long_liquidations_usd", 0),
-                "short_liquidations_usd": r.get("short_liquidations_usd", 0),
-                "total_liquidations_usd": r.get("total_liquidations_usd", 0),
-                "count": r.get("count", 0),
-            } for _, r in df.iterrows()]
+            rows = [
+                {
+                    "symbol": symbol,
+                    "timestamp": r["timestamp"].to_pydatetime(),
+                    "long_liquidations_usd": r.get("long_liquidations_usd", 0),
+                    "short_liquidations_usd": r.get("short_liquidations_usd", 0),
+                    "total_liquidations_usd": r.get("total_liquidations_usd", 0),
+                    "count": r.get("count", 0),
+                }
+                for _, r in df.iterrows()
+            ]
 
             with session_scope() as session:
-                n = _upsert_rows(session, CGLiquidations1h, rows, ["symbol", "timestamp"])
+                n = _upsert_rows(
+                    session, CGLiquidations1h, rows, ["symbol", "timestamp"]
+                )
                 total += n
             current = chunk_end
         return total
@@ -288,27 +344,40 @@ def backfill_long_short(
             chunk_end = min(current + timedelta(days=30), end)
 
             try:
-                df = client.fetch_long_short_ratio(symbol=symbol, exchange=exchange,
-                                                   start_time=current, end_time=chunk_end)
+                df = client.fetch_long_short_ratio(
+                    symbol=symbol,
+                    exchange=exchange,
+                    start_time=current,
+                    end_time=chunk_end,
+                )
             except CoinalyzeRateLimitError:
-                logger.warning("coinalyze_rate_limited_no_fallback", dataset="long_short",
-                               msg="Hyperliquid does not provide long/short ratio")
+                logger.warning(
+                    "coinalyze_rate_limited_no_fallback",
+                    dataset="long_short",
+                    msg="Hyperliquid does not provide long/short ratio",
+                )
                 current = chunk_end
                 continue
 
             df = validate_ratio_data(df, source="ls_backfill")
             df = align_to_hourly(df)
 
-            rows = [{
-                "symbol": symbol, "exchange": exchange,
-                "timestamp": r["timestamp"].to_pydatetime(),
-                "long_ratio": r.get("long_ratio"),
-                "short_ratio": r.get("short_ratio"),
-                "long_short_ratio": r.get("long_short_ratio"),
-            } for _, r in df.iterrows()]
+            rows = [
+                {
+                    "symbol": symbol,
+                    "exchange": exchange,
+                    "timestamp": r["timestamp"].to_pydatetime(),
+                    "long_ratio": r.get("long_ratio"),
+                    "short_ratio": r.get("short_ratio"),
+                    "long_short_ratio": r.get("long_short_ratio"),
+                }
+                for _, r in df.iterrows()
+            ]
 
             with session_scope() as session:
-                n = _upsert_rows(session, CGLongShort1h, rows, ["symbol", "exchange", "timestamp"])
+                n = _upsert_rows(
+                    session, CGLongShort1h, rows, ["symbol", "exchange", "timestamp"]
+                )
                 total += n
             current = chunk_end
         return total
@@ -335,24 +404,31 @@ def backfill_taker_flow(
             chunk_end = min(current + timedelta(days=30), end)
 
             try:
-                df = client.fetch_taker_buy_sell(symbol=symbol,
-                                                 start_time=current, end_time=chunk_end)
+                df = client.fetch_taker_buy_sell(
+                    symbol=symbol, start_time=current, end_time=chunk_end
+                )
             except CoinalyzeRateLimitError:
-                logger.warning("coinalyze_rate_limited_no_fallback", dataset="taker_flow",
-                               msg="Hyperliquid does not provide taker buy/sell volume")
+                logger.warning(
+                    "coinalyze_rate_limited_no_fallback",
+                    dataset="taker_flow",
+                    msg="Hyperliquid does not provide taker buy/sell volume",
+                )
                 current = chunk_end
                 continue
 
             df = validate_ratio_data(df, source="taker_backfill")
             df = align_to_hourly(df)
 
-            rows = [{
-                "symbol": symbol,
-                "timestamp": r["timestamp"].to_pydatetime(),
-                "buy_volume": r.get("buy_volume", 0),
-                "sell_volume": r.get("sell_volume", 0),
-                "buy_sell_ratio": r.get("buy_sell_ratio"),
-            } for _, r in df.iterrows()]
+            rows = [
+                {
+                    "symbol": symbol,
+                    "timestamp": r["timestamp"].to_pydatetime(),
+                    "buy_volume": r.get("buy_volume", 0),
+                    "sell_volume": r.get("sell_volume", 0),
+                    "buy_sell_ratio": r.get("buy_sell_ratio"),
+                }
+                for _, r in df.iterrows()
+            ]
 
             with session_scope() as session:
                 n = _upsert_rows(session, CGTakerFlow1h, rows, ["symbol", "timestamp"])

@@ -1,8 +1,8 @@
 """Resample and align all data to hourly UTC grid."""
+
 from __future__ import annotations
 
 import pandas as pd
-import numpy as np
 
 
 def align_to_hourly(df: pd.DataFrame, timestamp_col: str = "timestamp") -> pd.DataFrame:
@@ -22,7 +22,9 @@ def align_to_hourly(df: pd.DataFrame, timestamp_col: str = "timestamp") -> pd.Da
     return df.sort_values(timestamp_col).reset_index(drop=True)
 
 
-def resample_ohlc_to_hourly(df: pd.DataFrame, timestamp_col: str = "timestamp") -> pd.DataFrame:
+def resample_ohlc_to_hourly(
+    df: pd.DataFrame, timestamp_col: str = "timestamp"
+) -> pd.DataFrame:
     """Resample sub-hourly OHLC data to 1h bars."""
     if df.empty:
         return df
@@ -31,13 +33,19 @@ def resample_ohlc_to_hourly(df: pd.DataFrame, timestamp_col: str = "timestamp") 
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], utc=True)
     df = df.set_index(timestamp_col).sort_index()
 
-    resampled = df.resample("1h").agg({
-        "open": "first",
-        "high": "max",
-        "low": "min",
-        "close": "last",
-        "volume": "sum",
-    }).dropna(subset=["open"])
+    resampled = (
+        df.resample("1h")
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
+        )
+        .dropna(subset=["open"])
+    )
 
     return resampled.reset_index()
 

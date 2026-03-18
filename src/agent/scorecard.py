@@ -4,7 +4,7 @@ This is the critical missing piece that makes "discovering profitable strategies
 verifiable rather than aspirational.
 
 How it works:
-1. Every directional signal (long/short) is recorded with its entry price, TP, SL, 
+1. Every directional signal (long/short) is recorded with its entry price, TP, SL,
    expected holding period, and the timestamp it was issued.
 2. On every subsequent iteration, we fetch the current price and check each open signal:
    - Did price hit TP? → signal scored as WIN with actual PnL
@@ -25,12 +25,13 @@ The agent KNOWS it's discovering profitable strategies when:
 - max_drawdown hasn't breached configured limits
 - win rate in current regime matches or exceeds historical
 """
+
 from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +48,10 @@ SCORECARD_PATH = Path("artifacts/signal_scorecard.json")
 @dataclass
 class TrackedSignal:
     """A signal being tracked for outcome."""
-    signal_id: str              # unique identifier
-    timestamp: str              # ISO format
-    direction: str              # "long" or "short"
+
+    signal_id: str  # unique identifier
+    timestamp: str  # ISO format
+    direction: str  # "long" or "short"
     entry_price: float
     take_profit: float
     stop_loss: float
@@ -60,21 +62,21 @@ class TrackedSignal:
     agent_iteration: int
 
     # Outcome (filled after scoring)
-    status: str = "open"        # open, won, lost, expired
+    status: str = "open"  # open, won, lost, expired
     exit_price: float = 0.0
     exit_time: str = ""
-    pnl_pct: float = 0.0       # realized return %
-    pnl_usd: float = 0.0       # realized PnL in notional terms
+    pnl_pct: float = 0.0  # realized return %
+    pnl_usd: float = 0.0  # realized PnL in notional terms
     bars_held: int = 0
     hit_tp: bool = False
     hit_sl: bool = False
     peak_favorable: float = 0.0  # best unrealized profit during hold
-    peak_adverse: float = 0.0    # worst unrealized loss during hold
+    peak_adverse: float = 0.0  # worst unrealized loss during hold
 
 
 class SignalScorecard:
     """Tracks signal outcomes and computes real performance metrics.
-    
+
     This is the truth layer. Everything the agent believes about its own
     profitability is grounded in what this class computes.
     """
@@ -92,7 +94,9 @@ class SignalScorecard:
                 with open(SCORECARD_PATH) as f:
                     data = json.load(f)
                 self.open_signals = [TrackedSignal(**s) for s in data.get("open", [])]
-                self.closed_signals = [TrackedSignal(**s) for s in data.get("closed", [])]
+                self.closed_signals = [
+                    TrackedSignal(**s) for s in data.get("closed", [])
+                ]
                 self.equity_curve = data.get("equity_curve", [100000.0])
             except Exception as e:
                 logger.warning("scorecard_load_failed", error=str(e))
@@ -112,14 +116,16 @@ class SignalScorecard:
 
     def record_signal(self, signal) -> None:
         """Record a new directional signal for tracking.
-        
+
         Args:
             signal: SignalOutput from the agent
         """
         if signal.direction == "flat":
             return  # nothing to track
 
-        sig_id = f"sig_{signal.agent_iteration}_{signal.timestamp.strftime('%Y%m%d%H%M')}"
+        sig_id = (
+            f"sig_{signal.agent_iteration}_{signal.timestamp.strftime('%Y%m%d%H%M')}"
+        )
 
         tracked = TrackedSignal(
             signal_id=sig_id,
@@ -135,13 +141,20 @@ class SignalScorecard:
             agent_iteration=signal.agent_iteration,
         )
         self.open_signals.append(tracked)
-        logger.info("signal_tracked", id=sig_id, direction=signal.direction, entry=signal.entry_price)
+        logger.info(
+            "signal_tracked",
+            id=sig_id,
+            direction=signal.direction,
+            entry=signal.entry_price,
+        )
 
     # ── Score open signals against current price ─────────────
 
-    def score_signals(self, current_price: float, current_time: datetime | None = None) -> list[TrackedSignal]:
+    def score_signals(
+        self, current_price: float, current_time: datetime | None = None
+    ) -> list[TrackedSignal]:
         """Check all open signals against current price and time.
-        
+
         Returns list of signals that were just closed.
         """
         if current_price <= 0:
@@ -155,7 +168,7 @@ class SignalScorecard:
             entry_time = datetime.fromisoformat(sig.timestamp)
             if entry_time.tzinfo is None:
                 entry_time = entry_time.replace(tzinfo=timezone.utc)
-            
+
             hours_held = (now - entry_time).total_seconds() / 3600
             sig.bars_held = int(hours_held)
 
@@ -242,7 +255,7 @@ class SignalScorecard:
 
     def compute_metrics(self, min_signals: int = 5) -> dict[str, Any]:
         """Compute performance metrics from ACTUAL signal outcomes.
-        
+
         This is the ground truth the agent uses to know if it's profitable.
         """
         closed = self.closed_signals
@@ -276,10 +289,23 @@ class SignalScorecard:
         # Sharpe from actual signal returns
         if returns.std() > 0:
             # Annualize assuming ~2 signals per day on average
-            signals_per_year = max(n, 1) / max((
-                datetime.fromisoformat(closed[-1].exit_time.replace("Z", "+00:00")) -
-                datetime.fromisoformat(closed[0].timestamp.replace("Z", "+00:00"))
-            ).days / 365.25, 0.01) if n > 1 else 365
+            signals_per_year = (
+                max(n, 1)
+                / max(
+                    (
+                        datetime.fromisoformat(
+                            closed[-1].exit_time.replace("Z", "+00:00")
+                        )
+                        - datetime.fromisoformat(
+                            closed[0].timestamp.replace("Z", "+00:00")
+                        )
+                    ).days
+                    / 365.25,
+                    0.01,
+                )
+                if n > 1
+                else 365
+            )
             metrics["signal_sharpe"] = float(
                 returns.mean() / returns.std() * math.sqrt(min(signals_per_year, 1000))
             )
@@ -299,8 +325,10 @@ class SignalScorecard:
         # Profit factor
         gross_wins = wins.sum() if len(wins) > 0 else 0.0
         gross_losses = abs(losses.sum()) if len(losses) > 0 else 0.0
-        metrics["profit_factor"] = float(gross_wins / gross_losses) if gross_losses > 0 else (
-            float("inf") if gross_wins > 0 else 0.0
+        metrics["profit_factor"] = (
+            float(gross_wins / gross_losses)
+            if gross_losses > 0
+            else (float("inf") if gross_wins > 0 else 0.0)
         )
 
         # Expectancy: average PnL per signal
@@ -323,7 +351,9 @@ class SignalScorecard:
         metrics["recent_accuracy"] = float((recent > 0).mean())
         metrics["recent_avg_return"] = float(recent.mean())
         if recent.std() > 0:
-            metrics["recent_sharpe"] = float(recent.mean() / recent.std() * math.sqrt(len(recent)))
+            metrics["recent_sharpe"] = float(
+                recent.mean() / recent.std() * math.sqrt(len(recent))
+            )
         else:
             metrics["recent_sharpe"] = 0.0
 
@@ -358,16 +388,18 @@ class SignalScorecard:
         metrics["avg_bars_held"] = float(np.mean([s.bars_held for s in closed]))
 
         # Average MFE/MAE
-        metrics["avg_peak_favorable"] = float(np.mean([s.peak_favorable for s in closed]))
+        metrics["avg_peak_favorable"] = float(
+            np.mean([s.peak_favorable for s in closed])
+        )
         metrics["avg_peak_adverse"] = float(np.mean([s.peak_adverse for s in closed]))
 
         return metrics
 
     def is_profitable(self, min_signals: int = 30) -> tuple[bool, str]:
         """Definitive answer: is the system discovering profitable strategies?
-        
+
         Returns (is_profitable, explanation).
-        
+
         Criteria (ALL must be true):
         1. At least min_signals scored signals
         2. Signal Sharpe > 0
@@ -379,7 +411,10 @@ class SignalScorecard:
         m = self.compute_metrics(min_signals=min_signals)
 
         if not m["has_enough_data"]:
-            return False, f"Insufficient data: {m['n_signals_scored']}/{min_signals} signals scored"
+            return (
+                False,
+                f"Insufficient data: {m['n_signals_scored']}/{min_signals} signals scored",
+            )
 
         failures = []
         if m["signal_sharpe"] <= 0:

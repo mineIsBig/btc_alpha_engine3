@@ -1,7 +1,7 @@
 """Centralized configuration using Pydantic settings and YAML files."""
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 

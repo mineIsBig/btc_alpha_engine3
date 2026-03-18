@@ -10,6 +10,7 @@ We use Targon for:
 1. LLM inference (agent reasoning, code generation) via OpenAI-compat API
 2. CPU-bound model training tasks (sklearn, lightgbm, feature engineering)
 """
+
 from __future__ import annotations
 
 import json
@@ -41,7 +42,9 @@ class TargonClient:
     ):
         settings = get_settings()
         self.api_key = api_key or getattr(settings, "targon_api_key", "")
-        self.base_url = (base_url or getattr(settings, "targon_base_url", DEFAULT_TARGON_URL)).rstrip("/")
+        self.base_url = (
+            base_url or getattr(settings, "targon_base_url", DEFAULT_TARGON_URL)
+        ).rstrip("/")
         self.model = model or getattr(settings, "targon_model", DEFAULT_MODEL)
 
         self._client = httpx.Client(

@@ -1,4 +1,5 @@
 """Structured logging setup using structlog with rich context injection."""
+
 from __future__ import annotations
 
 import logging

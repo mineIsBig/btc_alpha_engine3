@@ -1,4 +1,5 @@
 """Base model interface for all alpha models."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -17,7 +18,9 @@ logger = get_logger(__name__)
 class BaseAlphaModel(ABC):
     """Unified interface for all alpha signal models."""
 
-    def __init__(self, horizon: int, params: dict[str, Any] | None = None, model_id: str = ""):
+    def __init__(
+        self, horizon: int, params: dict[str, Any] | None = None, model_id: str = ""
+    ):
         self.horizon = horizon
         self.params = params or {}
         self.model_id = model_id
@@ -31,7 +34,12 @@ class BaseAlphaModel(ABC):
         """Build the underlying sklearn/lgb/xgb model object."""
         ...
 
-    def fit(self, X: pd.DataFrame | np.ndarray, y: np.ndarray, feature_names: list[str] | None = None) -> None:
+    def fit(
+        self,
+        X: pd.DataFrame | np.ndarray,
+        y: np.ndarray,
+        feature_names: list[str] | None = None,
+    ) -> None:
         """Train the model."""
         if feature_names is not None:
             self.feature_names = feature_names
@@ -42,7 +50,12 @@ class BaseAlphaModel(ABC):
         self._model = self._build_model()
         self._model.fit(X_arr, y)
         self.is_fitted = True
-        logger.info("model_fitted", model_id=self.model_id, horizon=self.horizon, n_samples=len(y))
+        logger.info(
+            "model_fitted",
+            model_id=self.model_id,
+            horizon=self.horizon,
+            n_samples=len(y),
+        )
 
     def predict(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
         """Predict class labels (-1, 0, 1)."""
@@ -71,11 +84,19 @@ class BaseAlphaModel(ABC):
             proba[i, idx] = 1.0
         return proba
 
-    def calibrate(self, X_val: pd.DataFrame | np.ndarray, y_val: np.ndarray, method: str = "isotonic") -> None:
+    def calibrate(
+        self,
+        X_val: pd.DataFrame | np.ndarray,
+        y_val: np.ndarray,
+        method: str = "isotonic",
+    ) -> None:
         """Calibrate predicted probabilities using validation data."""
         from sklearn.calibration import CalibratedClassifierCV
+
         X_arr = X_val.values if isinstance(X_val, pd.DataFrame) else X_val
-        self._calibrator = CalibratedClassifierCV(self._model, method=method, cv="prefit")
+        self._calibrator = CalibratedClassifierCV(
+            self._model, method=method, cv="prefit"
+        )
         self._calibrator.fit(X_arr, y_val)
         logger.info("model_calibrated", model_id=self.model_id, method=method)
 

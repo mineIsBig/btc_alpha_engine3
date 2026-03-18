@@ -5,6 +5,7 @@ Static interactions (funding × OI) miss how the *change* in one signal
 relates to the *acceleration* of another. These temporal interactions
 capture momentum divergences, regime shifts, and feedback loops.
 """
+
 from __future__ import annotations
 
 import numpy as np

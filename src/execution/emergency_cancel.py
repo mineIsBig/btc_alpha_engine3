@@ -1,4 +1,5 @@
 """Emergency cancel and flatten operations."""
+
 from __future__ import annotations
 
 from src.common.logging import get_logger

@@ -1,7 +1,7 @@
 """Trade loop: orchestrates inference -> ensemble -> sizing -> execution."""
+
 from __future__ import annotations
 
-from datetime import datetime
 
 from src.common.config import get_settings
 from src.common.logging import get_logger
@@ -45,6 +45,7 @@ class TradeLoop:
         # Get current price
         if current_price is None:
             from src.data.hyperliquid_client import HyperliquidClient
+
             try:
                 client = HyperliquidClient()
                 current_price = client.get_mid_price("BTC") or self.last_price
@@ -62,7 +63,10 @@ class TradeLoop:
 
         if not can_continue:
             if self.settings.flatten_on_breach:
-                self.emergency.cancel_and_flatten({"BTC": current_price}, reason=self.risk.account.breach_reason or "breach")
+                self.emergency.cancel_and_flatten(
+                    {"BTC": current_price},
+                    reason=self.risk.account.breach_reason or "breach",
+                )
             self.risk.persist_state()
             return {"action": "breach", "reason": self.risk.account.breach_reason}
 
@@ -138,7 +142,9 @@ class TradeLoop:
         self.risk.post_fill(pnl)
         self.risk.persist_state()
 
-        logger.info("trade_executed", side=side_str, qty=qty, price=fill_price, result=result)
+        logger.info(
+            "trade_executed", side=side_str, qty=qty, price=fill_price, result=result
+        )
 
         return {
             "action": "trade",

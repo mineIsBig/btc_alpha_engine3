@@ -3,6 +3,7 @@
 Supports SQLite (dev), PostgreSQL, and PostgreSQL + TimescaleDB (production).
 TimescaleDB hypertables are auto-created for time-series tables when detected.
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -59,6 +60,7 @@ def get_engine() -> Engine:
                 pool_pre_ping=True,
                 connect_args=connect_args,
             )
+
             # Enable WAL mode for SQLite
             @event.listens_for(_engine, "connect")
             def _set_sqlite_pragma(dbapi_conn, connection_record):  # type: ignore
@@ -175,8 +177,8 @@ def _create_hypertables(engine: Engine) -> None:
                 # Convert to hypertable
                 conn.execute(
                     text(
-                        f"SELECT create_hypertable(:tbl, :col, "
-                        f"migrate_data => true, if_not_exists => true)"
+                        "SELECT create_hypertable(:tbl, :col, "
+                        "migrate_data => true, if_not_exists => true)"
                     ),
                     {"tbl": table_name, "col": time_col},
                 )
@@ -199,8 +201,11 @@ def _setup_timescale_policies(engine: Engine) -> None:
     with engine.connect() as conn:
         # Enable compression on high-volume tables with 7-day policy
         compress_tables = [
-            "price_bars_1h", "cg_funding_1h", "cg_oi_1h",
-            "cg_liquidations_1h", "feature_store_1h",
+            "price_bars_1h",
+            "cg_funding_1h",
+            "cg_oi_1h",
+            "cg_liquidations_1h",
+            "feature_store_1h",
         ]
         for tbl in compress_tables:
             try:
@@ -224,8 +229,8 @@ def _setup_timescale_policies(engine: Engine) -> None:
                 )
                 conn.execute(
                     text(
-                        f"SELECT add_compression_policy(:tbl, INTERVAL '7 days', "
-                        f"if_not_exists => true)"
+                        "SELECT add_compression_policy(:tbl, INTERVAL '7 days', "
+                        "if_not_exists => true)"
                     ),
                     {"tbl": tbl},
                 )
@@ -255,8 +260,8 @@ def _setup_timescale_policies(engine: Engine) -> None:
 
                 conn.execute(
                     text(
-                        f"SELECT add_retention_policy(:tbl, INTERVAL :interval, "
-                        f"if_not_exists => true)"
+                        "SELECT add_retention_policy(:tbl, INTERVAL :interval, "
+                        "if_not_exists => true)"
                     ),
                     {"tbl": tbl, "interval": interval},
                 )
@@ -294,5 +299,5 @@ def init_db() -> None:
             logger.info(
                 "timescaledb_not_available",
                 hint="Install TimescaleDB for optimal time-series performance. "
-                     "Falling back to standard PostgreSQL.",
+                "Falling back to standard PostgreSQL.",
             )

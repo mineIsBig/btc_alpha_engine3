@@ -1,7 +1,7 @@
 """Position sizing: volatility-targeting, drawdown-headroom-aware, with hard caps."""
+
 from __future__ import annotations
 
-import numpy as np
 
 from src.common.config import load_yaml_config
 from src.common.logging import get_logger
@@ -46,11 +46,19 @@ class VolatilitySizer:
             dict with target_size_usd, target_size_coin, sizing_reason
         """
         if equity <= 0 or current_price <= 0:
-            return {"target_size_usd": 0.0, "target_size_coin": 0.0, "reason": "zero_equity_or_price"}
+            return {
+                "target_size_usd": 0.0,
+                "target_size_coin": 0.0,
+                "reason": "zero_equity_or_price",
+            }
 
         # Check headroom
         if headroom_to_breach < self.min_headroom_pct:
-            return {"target_size_usd": 0.0, "target_size_coin": 0.0, "reason": "insufficient_headroom"}
+            return {
+                "target_size_usd": 0.0,
+                "target_size_coin": 0.0,
+                "reason": "insufficient_headroom",
+            }
 
         # Volatility-based sizing
         if realized_vol > 0:

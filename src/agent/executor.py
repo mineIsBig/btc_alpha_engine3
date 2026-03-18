@@ -10,6 +10,7 @@ SAFETY:
 - A config snapshot is taken before any batch of changes for rollback
 - The executor never modifies code files — only the evolution_config.json
 """
+
 from __future__ import annotations
 
 import re
@@ -22,8 +23,6 @@ from src.agent.evolution_config import (
     FeatureToggle,
     CustomInteraction,
     HyperparamOverride,
-    EnsembleConfig,
-    TPSLConfig,
     load_evolution_config,
     save_evolution_config,
     snapshot_config,
@@ -100,30 +99,48 @@ def _extract_feature_name(text: str) -> str | None:
 
 def _extract_model_type(text: str) -> str | None:
     """Extract model type from text."""
-    for mt in ["lgbm", "xgb", "rf", "lr", "lightgbm", "xgboost", "random_forest", "logistic"]:
+    for mt in [
+        "lgbm",
+        "xgb",
+        "rf",
+        "lr",
+        "lightgbm",
+        "xgboost",
+        "random_forest",
+        "logistic",
+    ]:
         if mt in text.lower():
-            mapping = {"lightgbm": "lgbm", "xgboost": "xgb", "random_forest": "rf", "logistic": "lr"}
+            mapping = {
+                "lightgbm": "lgbm",
+                "xgboost": "xgb",
+                "random_forest": "rf",
+                "logistic": "lr",
+            }
             return mapping.get(mt, mt)
     return None
 
 
 def _extract_interaction(text: str) -> tuple[str, str, str] | None:
     """Extract interaction feature components: (feature_a, feature_b, operation)."""
-    ops = {"multiply": "*", "divide": "/", "subtract": "-", "add": "+",
-           "*": "*", "/": "/", "-": "-", "+": "+",
-           "x": "*", "×": "*"}
-
     # Pattern: "feature_a * feature_b" or "feature_a x feature_b"
     m = re.search(r"(\w+)\s*([*×x/+\-])\s*(\w+)", text)
     if m:
         op_char = m.group(2)
-        op_name = {"*": "multiply", "×": "multiply", "x": "multiply",
-                    "/": "divide", "+": "add", "-": "subtract"}.get(op_char, "multiply")
+        op_name = {
+            "*": "multiply",
+            "×": "multiply",
+            "x": "multiply",
+            "/": "divide",
+            "+": "add",
+            "-": "subtract",
+        }.get(op_char, "multiply")
         return m.group(1), m.group(3), op_name
 
     # Pattern: "multiply feature_a and feature_b"
     for op_word in ["multiply", "divide", "subtract", "add"]:
-        m = re.search(rf"{op_word}\s+(\w+)\s+(?:and|with|by)\s+(\w+)", text, re.IGNORECASE)
+        m = re.search(
+            rf"{op_word}\s+(\w+)\s+(?:and|with|by)\s+(\w+)", text, re.IGNORECASE
+        )
         if m:
             return m.group(1), m.group(2), op_word
 
@@ -174,6 +191,7 @@ class ChangeExecutor:
             return False
         try:
             from src.agent.evolution_config import restore_config
+
             self.config = restore_config(self._pre_snapshot)
             save_evolution_config(self.config)
             logger.info("executor_rollback_success")
@@ -198,34 +216,52 @@ class ChangeExecutor:
 
         handler = handlers.get(change.type)
         if handler is None:
-            return {"success": False, "change": f"{change.type}/{change.action}",
-                    "detail": change.detail, "error": f"No handler for type: {change.type}"}
+            return {
+                "success": False,
+                "change": f"{change.type}/{change.action}",
+                "detail": change.detail,
+                "error": f"No handler for type: {change.type}",
+            }
 
         try:
             success, msg = handler(change, iteration, scorecard_metrics)
             level = "info" if success else "warning"
-            getattr(logger, level)("change_executed", type=change.type, action=change.action,
-                                    success=success, msg=msg)
-            return {"success": success, "change": f"{change.type}/{change.action}",
-                    "detail": change.detail, "message": msg}
+            getattr(logger, level)(
+                "change_executed",
+                type=change.type,
+                action=change.action,
+                success=success,
+                msg=msg,
+            )
+            return {
+                "success": success,
+                "change": f"{change.type}/{change.action}",
+                "detail": change.detail,
+                "message": msg,
+            }
         except Exception as e:
             logger.error("change_execution_failed", type=change.type, error=str(e))
-            return {"success": False, "change": f"{change.type}/{change.action}",
-                    "detail": change.detail, "error": str(e)}
+            return {
+                "success": False,
+                "change": f"{change.type}/{change.action}",
+                "detail": change.detail,
+                "error": str(e),
+            }
 
     # ── Feature changes ──────────────────────────────────────
 
     def _execute_feature(
         self, change: ProposedChange, iteration: int, metrics: dict[str, Any]
     ) -> tuple[bool, str]:
-        detail = change.detail.lower()
-
         if change.action == "remove":
             feat_name = _extract_feature_name(change.detail)
             if not feat_name:
                 return False, f"Could not extract feature name from: {change.detail}"
             self.config.feature_toggles[feat_name] = FeatureToggle(
-                name=feat_name, enabled=False, reason=change.detail, iteration_changed=iteration
+                name=feat_name,
+                enabled=False,
+                reason=change.detail,
+                iteration_changed=iteration,
             )
             return True, f"Disabled feature: {feat_name}"
 
@@ -236,8 +272,12 @@ class ChangeExecutor:
                 fa, fb, op = interaction
                 name = f"{fa}_{op}_{fb}"
                 ci = CustomInteraction(
-                    name=name, feature_a=fa, feature_b=fb,
-                    operation=op, enabled=True, iteration_added=iteration
+                    name=name,
+                    feature_a=fa,
+                    feature_b=fb,
+                    operation=op,
+                    enabled=True,
+                    iteration_added=iteration,
                 )
                 # Avoid duplicates
                 existing_names = {c.name for c in self.config.custom_interactions}
@@ -268,7 +308,10 @@ class ChangeExecutor:
                     return True, f"Re-enabled modified feature: {feat_name}"
                 # Otherwise just log the modification intent
                 self.config.feature_toggles[feat_name] = FeatureToggle(
-                    name=feat_name, enabled=True, reason=change.detail, iteration_changed=iteration
+                    name=feat_name,
+                    enabled=True,
+                    reason=change.detail,
+                    iteration_changed=iteration,
                 )
                 return True, f"Marked feature modified: {feat_name}"
 
@@ -290,7 +333,9 @@ class ChangeExecutor:
             value = _extract_number(detail, param_name)
             if value is not None:
                 clamped = _clamp(value, bounds)
-                updated_params[param_name] = clamped if isinstance(bounds[0], float) else int(clamped)
+                updated_params[param_name] = (
+                    clamped if isinstance(bounds[0], float) else int(clamped)
+                )
 
         if not updated_params and not model_type:
             return False, f"Could not parse hyperparameter change: {change.detail}"
@@ -308,8 +353,10 @@ class ChangeExecutor:
                 existing.reason = change.detail
             else:
                 self.config.hyperparam_overrides[mt] = HyperparamOverride(
-                    model_type=mt, params=updated_params,
-                    iteration_changed=iteration, reason=change.detail
+                    model_type=mt,
+                    params=updated_params,
+                    iteration_changed=iteration,
+                    reason=change.detail,
                 )
 
         if updated_params:
@@ -360,11 +407,15 @@ class ChangeExecutor:
                 new_val = max(self.config.ensemble.min_horizon_agreement - 1, 1)
                 self.config.ensemble.min_horizon_agreement = new_val
                 updates.append(f"min_horizon_agreement={new_val}")
-            elif "widen" in detail and ("tp" in detail or "take_profit" in detail or "take profit" in detail):
+            elif "widen" in detail and (
+                "tp" in detail or "take_profit" in detail or "take profit" in detail
+            ):
                 new_val = min(self.config.tp_sl.atr_multiplier_tp + 0.25, 5.0)
                 self.config.tp_sl.atr_multiplier_tp = new_val
                 updates.append(f"atr_multiplier_tp={new_val:.2f}")
-            elif "tighten" in detail and ("sl" in detail or "stop_loss" in detail or "stop loss" in detail):
+            elif "tighten" in detail and (
+                "sl" in detail or "stop_loss" in detail or "stop loss" in detail
+            ):
                 new_val = max(self.config.tp_sl.atr_multiplier_sl - 0.15, 0.5)
                 self.config.tp_sl.atr_multiplier_sl = new_val
                 updates.append(f"atr_multiplier_sl={new_val:.2f}")
@@ -406,8 +457,10 @@ class ChangeExecutor:
                 # Ensure there's a hyperparam override entry so it gets included in next retrain
                 if model_type not in self.config.hyperparam_overrides:
                     self.config.hyperparam_overrides[model_type] = HyperparamOverride(
-                        model_type=model_type, params={},
-                        iteration_changed=iteration, reason=change.detail
+                        model_type=model_type,
+                        params={},
+                        iteration_changed=iteration,
+                        reason=change.detail,
                     )
                 return True, f"Model type {model_type} flagged for next retrain cycle"
 
@@ -419,7 +472,9 @@ class ChangeExecutor:
                 value = _extract_number(detail, param_name)
                 if value is not None:
                     clamped = _clamp(value, bounds)
-                    updated_params[param_name] = clamped if isinstance(bounds[0], float) else int(clamped)
+                    updated_params[param_name] = (
+                        clamped if isinstance(bounds[0], float) else int(clamped)
+                    )
 
             if model_type and updated_params:
                 existing = self.config.hyperparam_overrides.get(model_type)
@@ -428,17 +483,24 @@ class ChangeExecutor:
                     existing.iteration_changed = iteration
                 else:
                     self.config.hyperparam_overrides[model_type] = HyperparamOverride(
-                        model_type=model_type, params=updated_params,
-                        iteration_changed=iteration, reason=change.detail
+                        model_type=model_type,
+                        params=updated_params,
+                        iteration_changed=iteration,
+                        reason=change.detail,
                     )
-                return True, f"Model {model_type} params updated: {updated_params}, retrain flagged"
+                return (
+                    True,
+                    f"Model {model_type} params updated: {updated_params}, retrain flagged",
+                )
 
             return True, f"Model modification noted: {change.detail}"
 
         return False, f"Unknown model action: {change.action}"
 
 
-def should_retrain(config: EvolutionConfig, iteration: int, scorecard_metrics: dict[str, Any]) -> bool:
+def should_retrain(
+    config: EvolutionConfig, iteration: int, scorecard_metrics: dict[str, Any]
+) -> bool:
     """Check if retraining should be triggered based on config + metrics."""
     trigger = config.retrain
 
@@ -470,11 +532,17 @@ def should_retrain(config: EvolutionConfig, iteration: int, scorecard_metrics: d
         return True
 
     if accuracy < trigger.accuracy_floor:
-        logger.info("retrain_trigger_accuracy", accuracy=accuracy, floor=trigger.accuracy_floor)
+        logger.info(
+            "retrain_trigger_accuracy", accuracy=accuracy, floor=trigger.accuracy_floor
+        )
         return True
 
     if drawdown < trigger.drawdown_trigger:
-        logger.info("retrain_trigger_drawdown", drawdown=drawdown, trigger=trigger.drawdown_trigger)
+        logger.info(
+            "retrain_trigger_drawdown",
+            drawdown=drawdown,
+            trigger=trigger.drawdown_trigger,
+        )
         return True
 
     # Check if hyperparams were updated since last retrain

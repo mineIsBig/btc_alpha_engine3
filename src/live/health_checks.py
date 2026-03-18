@@ -1,4 +1,5 @@
 """Health check monitoring for live trading."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -6,7 +7,7 @@ from datetime import datetime, timedelta
 from src.common.logging import get_logger
 from src.common.time_utils import utc_now
 from src.storage.database import get_session
-from src.storage.models import AccountSnapshot, SignalRecord
+from src.storage.models import AccountSnapshot
 
 logger = get_logger(__name__)
 
@@ -37,9 +38,11 @@ class HealthChecker:
 
         # Data freshness
         session = get_session()
-        latest_snap = session.query(AccountSnapshot).order_by(
-            AccountSnapshot.timestamp.desc()
-        ).first()
+        latest_snap = (
+            session.query(AccountSnapshot)
+            .order_by(AccountSnapshot.timestamp.desc())
+            .first()
+        )
         session.close()
 
         if latest_snap:

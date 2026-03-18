@@ -1,4 +1,5 @@
 """Training cycle: retrain models on latest data."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -32,16 +33,20 @@ def retrain_promoted_models(dataset: pd.DataFrame | None = None) -> int:
 
     with session_scope() as session:
         promoted = session.query(ModelRegistry).filter_by(status="promoted").all()
-        model_infos = [{
-            "model_id": m.model_id,
-            "model_type": m.model_type,
-            "horizon": m.horizon,
-            "params_json": m.params_json,
-        } for m in promoted]
+        model_infos = [
+            {
+                "model_id": m.model_id,
+                "model_type": m.model_type,
+                "horizon": m.horizon,
+                "params_json": m.params_json,
+            }
+            for m in promoted
+        ]
 
     for info in model_infos:
         try:
             import json
+
             model_cls = MODEL_CLASSES.get(info["model_type"])
             if model_cls is None:
                 continue
