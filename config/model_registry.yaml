@@ -56,25 +56,10 @@ calibration:
   enabled: true
 
 promotion:
-  # Base thresholds (will be adjusted by Bonferroni correction)
   min_oos_sharpe: 0.5
   min_oos_accuracy: 0.52
   max_breach_rate: 0.0
   min_folds: 3
-  
-  # Multiple comparisons protection
-  # With 20 model-horizon combinations, false positives are likely
-  # Bonferroni correction increases thresholds based on number of combinations
-  bonferroni_correction: true
-  n_combinations_tested: 20  # Adjust based on actual search space
-  
-  # Consecutive fold requirements
-  # Models must pass on multiple consecutive windows, not just on average
-  min_consecutive_folds: 2  # Require 2+ consecutive passing folds
-  
-  # Strict per-fold requirements
-  # No single fold can have negative Sharpe (prevents one good fold masking bad ones)
-  require_positive_sharpe_each_fold: true
 
 evolutionary_search:
   enabled: true

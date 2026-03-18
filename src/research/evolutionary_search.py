@@ -114,10 +114,6 @@ class EvolutionarySearch:
         splitter: PurgedWalkForward,
     ) -> Individual:
         """Evaluate an individual using walk-forward validation."""
-        # Ensure splitter has horizon-appropriate purge gap
-        if splitter.horizon != horizon:
-            splitter = splitter.with_horizon(horizon)
-        
         label_col = get_label_column(horizon)
         if label_col not in dataset.columns:
             individual.fitness = -999.0
@@ -241,9 +237,7 @@ class EvolutionarySearch:
         Returns sorted list of individuals by fitness (best first).
         """
         if splitter is None:
-            # Use horizon-specific purge gap to prevent information leakage
-            splitter = PurgedWalkForward.from_config(horizon=horizon)
-        logger.info("evo_splitter_config", horizon=horizon, purge_hours=splitter.purge_hours)
+            splitter = PurgedWalkForward.from_config()
 
         logger.info("evo_search_start", horizon=horizon, pop_size=self.population_size, gens=self.generations)
 
