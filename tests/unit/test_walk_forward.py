@@ -439,8 +439,9 @@ class TestRegimeSlippage:
         assert "commission_multiplier" in breakdown
         assert "liq_adder_bps" in breakdown
         assert breakdown["liq_adder_bps"] == pytest.approx(1.0)
-        assert slip == pytest.approx(breakdown["effective_slippage_bps"])
-        assert comm == pytest.approx(breakdown["effective_commission_bps"])
+        # Breakdown values are rounded to 3 decimals, so use abs tolerance
+        assert slip == pytest.approx(breakdown["effective_slippage_bps"], abs=0.01)
+        assert comm == pytest.approx(breakdown["effective_commission_bps"], abs=0.01)
 
     def test_apply_regime_slippage(self):
         """Convenience function should give different fills in different regimes."""
