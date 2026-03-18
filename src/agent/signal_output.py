@@ -82,3 +82,10 @@ class AgentState(BaseModel):
     active_features: list[str] = Field(default_factory=list)
     last_reflection: str = ""
     system_version: str = "v0.1"
+
+    # Evolution tracking
+    evolution_version: int = 0
+    retrain_pending: bool = False
+    last_retrain_iteration: int = 0
+    total_changes_executed: int = 0
+    total_retrains: int = 0

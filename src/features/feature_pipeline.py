@@ -1,4 +1,9 @@
-"""Feature pipeline: orchestrates all feature computations from raw data."""
+"""Feature pipeline: orchestrates all feature computations from raw data.
+
+Supports dynamic feature evolution via EvolutionConfig:
+- Features can be disabled by the agent (feature_toggles)
+- Custom interaction features can be added at runtime (custom_interactions)
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -23,6 +28,48 @@ from src.storage.models import (
 )
 
 logger = get_logger(__name__)
+
+
+def _apply_evolution_config(result: pd.DataFrame) -> pd.DataFrame:
+    """Apply dynamic feature evolution: disable features and add custom interactions.
+
+    Reads EvolutionConfig and:
+    1. Drops columns that have been disabled by the agent
+    2. Adds custom interaction features defined by the agent
+    """
+    try:
+        from src.agent.evolution_config import load_evolution_config
+        config = load_evolution_config()
+    except Exception:
+        return result  # no config = no changes
+
+    # 1. Disable toggled-off features
+    disabled = [name for name, toggle in config.feature_toggles.items()
+                if not toggle.enabled and name in result.columns]
+    if disabled:
+        result = result.drop(columns=disabled)
+        logger.info("features_disabled_by_evolution", count=len(disabled), features=disabled[:10])
+
+    # 2. Add custom interaction features
+    ops = {
+        "multiply": lambda a, b: a * b,
+        "divide": lambda a, b: a / b.replace(0, np.nan),
+        "add": lambda a, b: a + b,
+        "subtract": lambda a, b: a - b,
+    }
+    added = []
+    for ci in config.custom_interactions:
+        if not ci.enabled:
+            continue
+        if ci.feature_a in result.columns and ci.feature_b in result.columns:
+            op_fn = ops.get(ci.operation)
+            if op_fn is not None:
+                result[ci.name] = op_fn(result[ci.feature_a], result[ci.feature_b])
+                added.append(ci.name)
+    if added:
+        logger.info("custom_interactions_added", count=len(added), features=added)
+
+    return result
 
 
 def load_raw_data(
@@ -182,6 +229,9 @@ def build_features(
     result = result.replace([np.inf, -np.inf], np.nan)
 
     logger.info("features_built", n_features=len(result.columns) - 1, n_rows=len(result))
+
+    # Apply dynamic evolution config (disable features, add custom interactions)
+    result = _apply_evolution_config(result)
 
     # Re-attach regime_label for use by labels module
     if regime_label is not None:

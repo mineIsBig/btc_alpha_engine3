@@ -9,6 +9,13 @@ whether price hit TP, SL, or expired — computing REAL returns, Sharpe, and
 drawdown from actual signal outcomes. The agent reasons about THIS data,
 not just historical backtest metrics.
 
+EVOLUTION: The agent truly evolves by executing approved changes:
+- Features can be enabled/disabled and new interaction features created
+- Model hyperparameters are tuned and retraining triggered automatically
+- Ensemble consensus thresholds and weighting are adjusted dynamically
+- TP/SL bands are calibrated based on real signal outcomes
+- Underperforming models are retired and fresh models promoted
+
 GUARDRAILS:
 1. Schema validation: every LLM response is validated against Pydantic schemas.
    Malformed responses fail gracefully to "no change".
@@ -18,6 +25,7 @@ GUARDRAILS:
    In emergency states (deep drawdown, crashed Sharpe), only conservative
    modifications are allowed.
 4. Changelog: every change is recorded with rollback capability.
+5. Executor safety bounds: all numeric parameters are clamped within safe ranges.
 """
 from __future__ import annotations
 
@@ -40,6 +48,8 @@ from src.agent.guardrails import (
     DesignResponse,
     ReflectResponse,
 )
+from src.agent.executor import ChangeExecutor, should_retrain
+from src.agent.evolution_config import load_evolution_config, save_evolution_config
 from src.compute.dispatcher import ComputeDispatcher
 
 logger = get_logger(__name__)
@@ -53,6 +63,17 @@ CRITICAL: You receive REAL performance data from your own signal track record.
 The signal scorecard tracks every signal you issue, checks whether price hit
 your TP or SL, and computes actual Sharpe, accuracy, PnL. This is ground truth.
 Reason about THIS data, not hypotheticals.
+
+YOUR CHANGES ARE EXECUTED AUTOMATICALLY. When you propose changes, they are:
+- Feature changes: features are enabled/disabled, new interaction features created
+- Hyperparameter changes: model params are updated (n_estimators, learning_rate, max_depth, etc.)
+  and retraining is triggered automatically when needed
+- Ensemble changes: consensus thresholds, Sharpe weighting power, horizon agreement adjusted
+- TP/SL calibration: ATR multipliers, position sizing factors adjusted
+
+Be SPECIFIC with numbers. Instead of "increase learning rate", say "set learning_rate to 0.1 for lgbm".
+Instead of "add interaction feature", say "multiply funding_rate and oi_change_1h".
+Instead of "widen TP", say "set atr_multiplier_tp to 2.5".
 
 SCOPE CONSTRAINTS:
 You may propose changes to: features, models, hyperparameters, ensemble logic.
@@ -70,6 +91,8 @@ class AlphaAgent:
         self.state = self._load_state()
         self.scorecard = SignalScorecard()
         self.changelog = AgentChangelog()
+        self.evolution_config = load_evolution_config()
+        self.executor = ChangeExecutor(self.evolution_config)
 
     def _load_state(self) -> AgentState:
         if STATE_PATH.exists():
@@ -256,14 +279,15 @@ Be honest. Respond with JSON:
 
     def improve(self, design: DesignResponse, reflection: ReflectResponse,
                 scorecard_metrics: dict[str, Any]) -> list[str]:
-        """Apply improvements with full guardrails pipeline.
+        """Apply improvements with full guardrails pipeline + REAL EXECUTION.
 
         Pipeline:
         1. Take top 3 proposed changes from design
         2. Validate each change against scope constraints (block risk changes)
         3. Run through validation gate (check system health)
-        4. Record approved changes in changelog
-        5. Store in agent state for next iteration's context
+        4. EXECUTE approved changes via ChangeExecutor (updates EvolutionConfig)
+        5. Record results in changelog
+        6. Store in agent state for next iteration's context
         """
         proposed = design.proposed_changes[:3]
 
@@ -302,20 +326,38 @@ Be honest. Respond with JSON:
                     scorecard_snapshot=scorecard_metrics,
                 )
 
-        # ── Step 3: Record approved changes in changelog ─────
+        # ── Step 3: EXECUTE approved changes ─────────────────
         improvements = []
-        for change in gate_approved:
+        execution_results = []
+
+        if gate_approved:
+            execution_results = self.executor.execute_batch(
+                gate_approved, self.state.iteration, scorecard_metrics
+            )
+            # Reload evolution config after execution
+            self.evolution_config = load_evolution_config()
+
+        for change, exec_result in zip(gate_approved, execution_results):
             desc = f"{change.type}/{change.action}: {change.detail}"
-            improvements.append(desc)
+            succeeded = exec_result.get("success", False)
+            exec_msg = exec_result.get("message", exec_result.get("error", ""))
+
+            if succeeded:
+                improvements.append(desc)
+                status = "applied"
+                validation_msg = f"Executed: {exec_msg}"
+            else:
+                status = "execution_failed"
+                validation_msg = f"Execution failed: {exec_msg}"
 
             self.changelog.record(
                 iteration=self.state.iteration,
                 change=change,
-                status="applied",
-                validation_result="Passed scope + validation gate",
+                status=status,
+                validation_result=validation_msg,
                 scorecard_snapshot=scorecard_metrics,
             )
-            logger.info("improvement_applied", change=desc)
+            logger.info("improvement_result", change=desc, success=succeeded, msg=exec_msg)
 
         self.changelog.save()
 
@@ -325,10 +367,18 @@ Be honest. Respond with JSON:
         if len(self.state.improvements_applied) > 50:
             self.state.improvements_applied = self.state.improvements_applied[-50:]
 
+        # Track evolution state
+        self.state.evolution_version = self.evolution_config.version
+        self.state.retrain_pending = should_retrain(
+            self.evolution_config, self.state.iteration, scorecard_metrics
+        )
+
         logger.info("improve_summary",
                      proposed=len(proposed),
                      scope_rejected=len(scope_rejections),
                      gate_rejected=len(gate_rejections),
+                     executed=len([r for r in execution_results if r.get("success")]),
+                     failed=len([r for r in execution_results if not r.get("success")]),
                      applied=len(improvements))
 
         return improvements
@@ -340,6 +390,7 @@ Be honest. Respond with JSON:
 
     def generate_signal(self, run_results: dict[str, Any], performance: dict[str, Any],
                         current_price: float = 0.0, equity: float = 100000.0) -> SignalOutput:
+        """Generate signal using dynamic TP/SL calibration from EvolutionConfig."""
         signals = run_results.get("signals", {})
         final_side = signals.get("final_side", 0)
         reason = signals.get("reason", "no_signals")
@@ -350,25 +401,30 @@ Be honest. Respond with JSON:
                               agent_iteration=self.state.iteration, system_sharpe=self.state.rolling_sharpe,
                               system_drawdown=self.state.max_drawdown)
 
-        atr_pct = 0.02
+        # Use dynamic TP/SL from evolution config
+        tp_sl = self.evolution_config.tp_sl
+        atr_pct = tp_sl.atr_pct
+
         if final_side == 1:
-            take_profit = current_price * (1 + atr_pct * 2)
-            stop_loss = current_price * (1 - atr_pct)
+            take_profit = current_price * (1 + atr_pct * tp_sl.atr_multiplier_tp)
+            stop_loss = current_price * (1 - atr_pct * tp_sl.atr_multiplier_sl)
         else:
-            take_profit = current_price * (1 - atr_pct * 2)
-            stop_loss = current_price * (1 + atr_pct)
+            take_profit = current_price * (1 - atr_pct * tp_sl.atr_multiplier_tp)
+            stop_loss = current_price * (1 + atr_pct * tp_sl.atr_multiplier_sl)
 
         agg = signals.get("aggregated", {})
         consensus_vals = [v.get("consensus", 0) for v in agg.values()] if agg else [0.5]
         confidence = max(consensus_vals) if consensus_vals else 0.5
-        size_pct = min(0.15, confidence * 0.2)
+        size_pct = min(tp_sl.max_position_size_pct, confidence * tp_sl.confidence_sizing_factor)
         consensus_horizons = [h for h, a in agg.items() if a.get("side", 0) == final_side]
+
+        expected_return = atr_pct * tp_sl.atr_multiplier_tp * final_side * 100
 
         return SignalOutput(
             timestamp=utc_now(), direction=direction,
             position_size_pct=size_pct, position_size_usd=round(equity * size_pct, 2),
             entry_price=current_price, take_profit=round(take_profit, 2), stop_loss=round(stop_loss, 2),
-            expected_return_pct=round(atr_pct * 2 * final_side * 100, 2),
+            expected_return_pct=round(expected_return, 2),
             expected_holding_hours=max(consensus_horizons) if consensus_horizons else 4,
             risk_reward_ratio=round(abs(take_profit - current_price) / max(abs(stop_loss - current_price), 0.01), 2),
             confidence=confidence, consensus_horizons=consensus_horizons, reasoning=reason,
@@ -376,22 +432,78 @@ Be honest. Respond with JSON:
             system_drawdown=self.state.max_drawdown,
         )
 
+    def check_retrain_needed(self, scorecard_metrics: dict[str, Any]) -> bool:
+        """Check if model retraining should be triggered."""
+        return should_retrain(self.evolution_config, self.state.iteration, scorecard_metrics)
+
+    def run_retrain(self) -> dict[str, Any]:
+        """Execute autonomous retraining cycle.
+
+        Uses evolved hyperparameters from EvolutionConfig and automatically
+        promotes/retires models based on walk-forward results.
+        """
+        from src.orchestrator.research_cycle import auto_retrain_and_promote
+        result = auto_retrain_and_promote(iteration=self.state.iteration)
+        # Reload config after retrain (retrain updates last_retrain_iteration)
+        self.evolution_config = load_evolution_config()
+        self.state.last_retrain_iteration = self.state.iteration
+        self.state.retrain_pending = False
+        return result
+
+    def manage_model_lifecycle(self, scorecard_metrics: dict[str, Any]) -> dict[str, Any]:
+        """Evaluate and retire underperforming promoted models based on live signal performance.
+
+        Uses per-model signal tracking from scorecard to identify models that are
+        dragging down ensemble performance.
+        """
+        from src.models.registry import ModelArtifactRegistry
+        lifecycle = self.evolution_config.model_lifecycle
+        registry = ModelArtifactRegistry()
+        result = {"retired": [], "kept": []}
+
+        n_signals = scorecard_metrics.get("n_signals_scored", 0)
+        if n_signals < lifecycle.min_signals_for_eval:
+            return result
+
+        promoted = registry.get_promoted_models()
+        for model_info in promoted:
+            sharpe = model_info.get("oos_sharpe") or 0
+            if sharpe < lifecycle.retire_sharpe_threshold:
+                try:
+                    registry.retire_model(model_info["model_id"])
+                    result["retired"].append(model_info["model_id"])
+                    logger.info("model_auto_retired", model_id=model_info["model_id"], sharpe=sharpe)
+                except Exception as e:
+                    logger.warning("model_retire_failed", model_id=model_info["model_id"], error=str(e))
+            else:
+                result["kept"].append(model_info["model_id"])
+
+        # Update state
+        self.state.model_population_size = len(result["kept"])
+        return result
+
     def iterate(self, current_price: float = 0.0, equity: float = 100000.0,
                 raw_data: dict | None = None) -> SignalOutput:
-        """Run one full ralph-loop iteration with guardrails.
+        """Run one full ralph-loop iteration with guardrails and real evolution.
 
-        The critical difference: every iteration starts by SCORING previous
-        signals against actual price, and the entire reasoning chain operates
-        on real performance data from the scorecard.
+        The critical difference from advisory-only agents:
+        1. Every iteration starts by SCORING previous signals against actual price
+        2. The entire reasoning chain operates on real performance data
+        3. Approved changes are EXECUTED (features disabled, hyperparams tuned,
+           ensemble adjusted, TP/SL calibrated) — not just logged
+        4. Retraining is triggered automatically when performance degrades
+        5. Models are promoted/retired based on live performance
 
         Guardrails applied:
         - LLM responses validated against Pydantic schemas
         - Proposed changes filtered by scope (risk changes blocked)
         - Validation gate checks system health before allowing changes
         - All changes recorded in changelog with rollback capability
+        - Executor clamps all numeric params within safe bounds
         """
         self.state.iteration += 1
-        logger.info("agent_iteration_start", iteration=self.state.iteration)
+        logger.info("agent_iteration_start", iteration=self.state.iteration,
+                     evolution_version=self.evolution_config.version)
 
         try:
             # ═══ SCORE PREVIOUS SIGNALS FIRST ═══
@@ -409,10 +521,15 @@ Be honest. Respond with JSON:
             prev_perf = {"scorecard_metrics": scorecard_metrics,
                         "is_profitable": is_profitable, "verdict": verdict, "iteration": self.state.iteration}
 
+            # ═══ MODEL LIFECYCLE — retire underperformers ═══
+            lifecycle_result = self.manage_model_lifecycle(scorecard_metrics)
+            if lifecycle_result["retired"]:
+                logger.info("models_retired_this_iteration", retired=lifecycle_result["retired"])
+
             # ═══ DESIGN (with schema validation) ═══
             design = self.design_or_modify(prev_perf)
 
-            # ═══ RUN SYSTEM ═══
+            # ═══ RUN SYSTEM (uses evolved features + ensemble params) ═══
             run_results = self.run_system(raw_data=raw_data)
 
             # ═══ MEASURE ═══
@@ -421,10 +538,10 @@ Be honest. Respond with JSON:
             # ═══ REFLECT (with schema validation) ═══
             reflection = self.reflect(performance)
 
-            # ═══ IMPROVE (with scope + validation gate + changelog) ═══
+            # ═══ IMPROVE (with scope + validation gate + EXECUTION) ═══
             improvements = self.improve(design, reflection, performance.get("scorecard_metrics", {}))
 
-            # ═══ GENERATE SIGNAL ═══
+            # ═══ GENERATE SIGNAL (uses evolved TP/SL calibration) ═══
             signal = self.generate_signal(run_results, performance, current_price, equity)
             self.state.total_signals += 1
             self.state.last_signal = signal
@@ -436,7 +553,9 @@ Be honest. Respond with JSON:
 
             logger.info("agent_iteration_complete", iteration=self.state.iteration,
                        direction=signal.direction, profitable=is_profitable,
-                       changes_applied=len(improvements))
+                       changes_applied=len(improvements),
+                       evolution_version=self.evolution_config.version,
+                       retrain_pending=self.state.retrain_pending)
             return signal
 
         except Exception as e:

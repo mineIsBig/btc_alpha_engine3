@@ -1,4 +1,8 @@
-"""Research cycle: data refresh -> feature build -> walk-forward -> model selection."""
+"""Research cycle: data refresh -> feature build -> walk-forward -> model selection.
+
+Supports dynamic hyperparameter overrides from EvolutionConfig, allowing the
+autonomous agent to tune model parameters between retraining cycles.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -21,19 +25,43 @@ from src.research.reports import save_fold_report, generate_summary_report
 
 logger = get_logger(__name__)
 
-MODEL_CONFIGS = [
+DEFAULT_MODEL_CONFIGS = [
     ("lr", LogisticRegressionModel, {"C": 1.0, "penalty": "l2"}),
     ("rf", RandomForestModel, {"n_estimators": 200, "max_depth": 10}),
     ("lgbm", LightGBMModel, {"n_estimators": 300, "max_depth": 5, "learning_rate": 0.05}),
     ("xgb", XGBoostModel, {"n_estimators": 300, "max_depth": 5, "learning_rate": 0.05}),
 ]
 
+# Keep backward compat alias
+MODEL_CONFIGS = DEFAULT_MODEL_CONFIGS
+
 HORIZONS = [1, 4, 8, 12, 24]
+
+
+def _get_evolved_model_configs() -> list[tuple[str, type, dict[str, Any]]]:
+    """Build model configs with dynamic hyperparameter overrides from EvolutionConfig."""
+    try:
+        from src.agent.evolution_config import load_evolution_config
+        config = load_evolution_config()
+    except Exception:
+        return list(DEFAULT_MODEL_CONFIGS)
+
+    evolved = []
+    for name, cls, default_params in DEFAULT_MODEL_CONFIGS:
+        override = config.hyperparam_overrides.get(name)
+        if override and override.params:
+            merged = {**default_params, **override.params}
+            logger.info("hyperparam_override_applied", model=name, overrides=override.params)
+            evolved.append((name, cls, merged))
+        else:
+            evolved.append((name, cls, dict(default_params)))
+    return evolved
 
 
 def run_research_cycle(
     dataset: pd.DataFrame | None = None,
     horizons: list[int] | None = None,
+    use_evolved_configs: bool = False,
 ) -> list[dict[str, Any]]:
     """Run a complete research cycle.
 
@@ -41,6 +69,9 @@ def run_research_cycle(
     2. For each horizon x model type, run walk-forward
     3. Score and select candidates
     4. Return results
+
+    Args:
+        use_evolved_configs: If True, apply hyperparameter overrides from EvolutionConfig.
     """
     horizons = horizons or HORIZONS
 
@@ -54,6 +85,7 @@ def run_research_cycle(
 
     feature_cols = get_feature_columns(dataset)
     registry = ModelArtifactRegistry()
+    model_configs = _get_evolved_model_configs() if use_evolved_configs else DEFAULT_MODEL_CONFIGS
 
     all_results = []
 
@@ -69,7 +101,7 @@ def run_research_cycle(
         # label horizon (e.g. 72h purge for 24h labels instead of 48h)
         splitter = PurgedWalkForward.from_config(horizon=horizon)
 
-        for model_name, model_cls, default_params in MODEL_CONFIGS:
+        for model_name, model_cls, default_params in model_configs:
             model_id = f"{model_name}_h{horizon}"
             logger.info("walk_forward_start", model_id=model_id,
                         purge_hours=splitter.purge_hours)
@@ -145,3 +177,79 @@ def run_research_cycle(
     logger.info("research_cycle_complete", total_models=len(all_results), candidates=len(candidates))
 
     return candidates
+
+
+def auto_retrain_and_promote(iteration: int = 0) -> dict[str, Any]:
+    """Autonomous retrain: run research cycle with evolved configs, promote best models.
+
+    Called by the agent loop when retrain triggers fire. Uses EvolutionConfig
+    hyperparameter overrides and automatically promotes winning candidates.
+
+    Returns summary of what happened.
+    """
+    from src.agent.evolution_config import load_evolution_config, save_evolution_config
+
+    logger.info("auto_retrain_start", iteration=iteration)
+    config = load_evolution_config()
+    config.retrain.retrain_in_progress = True
+    save_evolution_config(config)
+
+    result: dict[str, Any] = {
+        "iteration": iteration,
+        "status": "failed",
+        "candidates": 0,
+        "promoted": 0,
+        "retired": 0,
+        "errors": [],
+    }
+
+    try:
+        candidates = run_research_cycle(use_evolved_configs=True)
+        result["candidates"] = len(candidates)
+
+        if candidates:
+            registry = ModelArtifactRegistry()
+
+            # Promote candidates that pass selection
+            promoted = 0
+            for c in candidates:
+                model_id = c.get("model_id", "")
+                try:
+                    registry.promote_model(model_id)
+                    promoted += 1
+                except Exception as e:
+                    result["errors"].append(f"promote {model_id}: {e}")
+
+            result["promoted"] = promoted
+
+            # Retire underperforming models
+            retired = 0
+            lifecycle = config.model_lifecycle
+            all_promoted = registry.get_promoted_models()
+            for model_info in all_promoted:
+                sharpe = model_info.get("oos_sharpe", 0) or 0
+                if sharpe < lifecycle.retire_sharpe_threshold:
+                    try:
+                        registry.retire_model(model_info["model_id"])
+                        retired += 1
+                    except Exception as e:
+                        result["errors"].append(f"retire {model_info['model_id']}: {e}")
+
+            result["retired"] = retired
+            result["status"] = "success"
+
+        else:
+            result["status"] = "no_candidates"
+
+    except Exception as e:
+        logger.error("auto_retrain_failed", error=str(e))
+        result["errors"].append(str(e))
+
+    finally:
+        config = load_evolution_config()
+        config.retrain.retrain_in_progress = False
+        config.retrain.last_retrain_iteration = iteration
+        save_evolution_config(config)
+        logger.info("auto_retrain_complete", **result)
+
+    return result
