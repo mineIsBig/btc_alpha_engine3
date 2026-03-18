@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Backfill historical data from Coinalyze (formerly CoinGlass)."""
+
 import sys
+
 sys.path.insert(0, ".")
 
 import click
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from src.common.logging import setup_logging, get_logger
@@ -21,7 +24,9 @@ logger = get_logger(__name__)
 @click.option("--end", default=None, help="End date YYYY-MM-DD (default: now)")
 def main(symbol: str, start: str, end: str | None) -> None:
     start_dt = datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    end_dt = datetime.strptime(end, "%Y-%m-%d").replace(tzinfo=timezone.utc) if end else None
+    end_dt = (
+        datetime.strptime(end, "%Y-%m-%d").replace(tzinfo=timezone.utc) if end else None
+    )
 
     logger.info("backfill_starting", symbol=symbol, start=start, end=end)
     results = backfill_all(symbol=symbol, start=start_dt, end=end_dt)

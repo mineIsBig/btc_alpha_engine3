@@ -54,6 +54,7 @@ def setup_logging(level: str = "INFO", fmt: str = "json") -> None:
     """Configure structlog + stdlib logging with rich context injection."""
     log_level = getattr(logging, level.upper(), logging.INFO)
 
+    renderer: Any
     if fmt == "json":
         renderer = structlog.processors.JSONRenderer()
     else:
@@ -62,7 +63,7 @@ def setup_logging(level: str = "INFO", fmt: str = "json") -> None:
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
-            _inject_agent_context,
+            _inject_agent_context,  # type: ignore[list-item]
             structlog.processors.add_log_level,
             structlog.processors.StackInfoRenderer(),
             structlog.processors.TimeStamper(fmt="iso"),
@@ -84,4 +85,4 @@ def setup_logging(level: str = "INFO", fmt: str = "json") -> None:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Get a bound logger instance."""
-    return structlog.get_logger(name)
+    return structlog.get_logger(name)  # type: ignore[no-any-return]

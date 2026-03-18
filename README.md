@@ -37,7 +37,7 @@ Autonomous BTC alpha engine with derivatives-based signals, walk-forward researc
 **Compute**: Targon (CPU inference), Lium (GPU training), Chutes.ai (agent reasoning)
 **Horizons**: 1h, 4h, 8h, 12h, 24h
 **Models**: Logistic Regression, Random Forest, LightGBM, XGBoost (+ optional LSTM)
-**Data Sources**: CoinGlass (funding, OI, liquidations, long/short, taker flow), Hyperliquid (price)
+**Data Sources**: Coinalyze (funding, OI, liquidations, long/short, taker flow), Hyperliquid (price)
 **Monitoring**: Prometheus metrics → Grafana dashboards
 
 ## Autonomous Agent (Arbos-Inspired)
@@ -234,6 +234,8 @@ python scripts/shadow_live.py --confirm
 ```
 btc_alpha_engine/
 ├── pyproject.toml              # Dependencies and project config
+├── requirements.lock           # Pinned dependencies for reproducibility
+├── CONTRIBUTING.md             # Guide: adding models, features, data providers
 ├── .env.example                # Environment variable template
 ├── alembic.ini                 # Alembic migration config
 ├── docker-compose.monitoring.yml  # Prometheus + Grafana stack
@@ -252,6 +254,7 @@ btc_alpha_engine/
 │   ├── backfill_coinglass.py   # Historical data backfill
 │   ├── train_walk_forward.py   # Model training pipeline
 │   ├── run_agent.py            # ★ Start autonomous agent loop
+│   ├── run_phase.py            # ★ Run individual phases for debugging
 │   ├── paper_trade.py          # Start paper trading
 │   ├── shadow_live.py          # Shadow/live trading
 │   └── promote_models.py       # Promote trained models
@@ -271,6 +274,12 @@ btc_alpha_engine/
 │   ├── compute/                # ★ Targon, Lium, Chutes.ai clients + dispatcher
 │   ├── agent/                  # ★ Autonomous alpha agent (Arbos ralph-loop)
 │   └── monitoring/             # ★ Prometheus metrics exposition
+├── docs/
+│   └── adr/                    # Architecture Decision Records
+│       ├── 001-horizon-selection.md
+│       ├── 002-risk-limits.md
+│       ├── 003-sharpe-weighted-ensemble.md
+│       └── 004-monolith-to-phases.md
 └── tests/
     ├── conftest.py             # Fixtures with synthetic data
     ├── unit/                   # Unit tests (including test_agent.py)
@@ -292,6 +301,28 @@ python scripts/run_agent.py --delay 1800 --equity 50000
 # Prometheus metrics exposed on port 9090
 curl http://localhost:9090/metrics
 ```
+
+### Running Individual Phases
+
+The agent loop is decomposed into independently-runnable phases. Use `run_phase.py` to debug or replay any step without running the full loop:
+
+```bash
+# Run just the measure phase (no LLM calls, instant)
+python scripts/run_phase.py measure --price 65000
+
+# Run score + measure for quick performance check
+python scripts/run_phase.py score measure --price 65000
+
+# Re-run reflect on saved context (skips score/run/measure)
+python scripts/run_phase.py reflect --context artifacts/phase_context.json
+
+# Run full pipeline (equivalent to --once)
+python scripts/run_phase.py all --price 65000
+```
+
+Phases: `score` → `design` → `run` → `measure` → `reflect` → `improve` → `signal`
+
+Only `design` and `reflect` make LLM calls. All others run locally in <1 second.
 
 ## Monitoring (Prometheus + Grafana)
 
@@ -354,6 +385,7 @@ All configuration is in YAML files under `config/`. Key settings:
 | Flow | Long/short ratio, taker buy/sell ratio, net flow, z-scores, extremes |
 | Regime | Trend up/down, mean revert, crowded long/short, panic flush, squeeze |
 | Interaction | Funding × OI, liquidation × taker flow, funding × LS ratio |
+| Temporal | Funding Δ × OI accel, price-OI cov regime shifts, lagged cross-correlations, vol compression × OI surge |
 
 ## Checklist: Manual Steps Required
 

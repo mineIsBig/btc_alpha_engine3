@@ -2,6 +2,8 @@
 
 from datetime import datetime, timezone
 
+import pytest
+
 
 class TestSignalOutput:
     def test_flat_signal(self):
@@ -131,6 +133,25 @@ class TestComputeDispatcher:
 
 
 class TestMetricsCollector:
+    @pytest.fixture(autouse=True)
+    def _reset_prometheus_registry(self):
+        """Reset prometheus_client registry between tests to avoid duplicate errors."""
+        try:
+            from prometheus_client import REGISTRY
+
+            # Collect names of all collectors we might have registered
+            collectors_to_remove = []
+            for collector in list(REGISTRY._names_to_collectors.values()):
+                collectors_to_remove.append(collector)
+            for collector in set(collectors_to_remove):
+                try:
+                    REGISTRY.unregister(collector)
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+        yield
+
     def test_record_signal(self):
         from src.monitoring.prometheus_metrics import MetricsCollector
         from src.agent.signal_output import SignalOutput
