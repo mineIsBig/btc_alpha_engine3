@@ -1,0 +1,28 @@
+# data_sources.yaml
+coinglass:
+  base_url: "https://open-api-v3.coinglass.com/api"
+  rate_limit_per_minute: 30
+  retry_max: 3
+  retry_backoff: 2.0
+  endpoints:
+    funding_rate_ohlc: "/futures/funding-rates-ohlc-history"
+    oi_ohlc: "/futures/openInterest/ohlc-history"
+    liquidation_history: "/futures/liquidation/v2/history"
+    long_short_ratio: "/futures/globalLongShortAccountRatio/history"
+    taker_buy_sell: "/futures/taker-buy-sell/history"
+  default_exchange: Binance
+  default_interval: h1
+
+hyperliquid:
+  mainnet_url: "https://api.hyperliquid.xyz"
+  testnet_url: "https://api.hyperliquid-testnet.xyz"
+  info_endpoint: "/info"
+  exchange_endpoint: "/exchange"
+  ws_url: "wss://api.hyperliquid.xyz/ws"
+  ws_testnet_url: "wss://api.hyperliquid-testnet.xyz/ws"
+
+price:
+  # Use CoinGlass or Hyperliquid candles as price source
+  primary_source: coinglass
+  fallback_source: hyperliquid
+  interval: 1h

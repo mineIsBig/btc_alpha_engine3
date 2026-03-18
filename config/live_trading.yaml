@@ -1,0 +1,28 @@
+# live_trading.yaml
+live_trading_enabled: false
+paper_mode: true
+
+decision_interval_minutes: 60    # run model every hour
+equity_check_interval_seconds: 60
+position_sync_interval_seconds: 30
+
+order_settings:
+  order_type: limit          # limit or market
+  limit_offset_bps: 3.0     # place limit 3bps from mid
+  timeout_seconds: 30        # cancel if not filled
+  max_retry: 2
+
+startup:
+  sync_positions: true
+  verify_risk_state: true
+  require_operator_ack: false  # set true for production
+
+logging:
+  level: INFO
+  format: json
+  file: logs/live.log
+
+health_check:
+  interval_seconds: 300
+  stale_data_threshold_seconds: 600
+  max_missed_decisions: 3

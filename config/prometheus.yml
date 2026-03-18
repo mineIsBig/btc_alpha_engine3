@@ -1,0 +1,17 @@
+# prometheus.yml - Prometheus configuration for BTC Alpha Agent
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "btc_alpha_agent"
+    static_configs:
+      - targets: ["host.docker.internal:9090"]
+        labels:
+          instance: "alpha_agent"
+    scrape_interval: 10s
+
+  # If running agent inside docker, use:
+  # - job_name: "btc_alpha_agent_docker"
+  #   static_configs:
+  #     - targets: ["btc_alpha_agent:9090"]

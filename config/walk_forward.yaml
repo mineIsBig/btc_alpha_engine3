@@ -1,0 +1,30 @@
+# walk_forward.yaml
+walk_forward:
+  train_days: 90
+  test_days: 14
+  purge_hours: 48       # gap between train end and test start
+  embargo_hours: 24     # gap after test end before next train start
+  min_train_samples: 1000
+  step_days: 14         # roll forward by this many days each fold
+  max_folds: 50
+
+scoring:
+  primary_metric: sharpe_ratio
+  secondary_metrics:
+    - accuracy
+    - precision
+    - recall
+    - profit_factor
+    - max_drawdown
+    - calmar_ratio
+  min_trades_per_fold: 10
+
+costs:
+  slippage_bps: 5.0        # 5 bps one-way slippage
+  commission_bps: 2.0      # 2 bps one-way commission
+  funding_rate_avg_bps: 1.0  # average hourly funding cost
+
+simulation:
+  initial_equity: 100000.0
+  enforce_risk_rules: true
+  compounding: true

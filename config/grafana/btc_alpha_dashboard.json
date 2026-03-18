@@ -1,0 +1,166 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "System Sharpe Ratio",
+      "type": "gauge",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "system_sharpe_ratio", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "green", "value": 1.0}
+            ]
+          },
+          "min": -2, "max": 4
+        }
+      }
+    },
+    {
+      "title": "Max Drawdown",
+      "type": "gauge",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "system_max_drawdown", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": -0.03},
+              {"color": "red", "value": -0.05}
+            ]
+          },
+          "min": -0.15, "max": 0
+        }
+      }
+    },
+    {
+      "title": "Signal Direction",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 4, "x": 12, "y": 0},
+      "targets": [{"expr": "signal_direction", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"1": {"text": "LONG", "color": "green"}}},
+            {"type": "value", "options": {"0": {"text": "FLAT", "color": "blue"}}},
+            {"type": "value", "options": {"-1": {"text": "SHORT", "color": "red"}}}
+          ]
+        }
+      }
+    },
+    {
+      "title": "Signal Confidence",
+      "type": "gauge",
+      "gridPos": {"h": 6, "w": 4, "x": 16, "y": 0},
+      "targets": [{"expr": "signal_confidence", "refId": "A"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}}
+    },
+    {
+      "title": "Position Size (USD)",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 4, "x": 20, "y": 0},
+      "targets": [{"expr": "signal_position_size_usd", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    },
+    {
+      "title": "Sharpe Ratio Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "targets": [{"expr": "system_sharpe_ratio", "refId": "A", "legendFormat": "Sharpe"}]
+    },
+    {
+      "title": "Drawdown Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "targets": [{"expr": "system_max_drawdown", "refId": "A", "legendFormat": "Drawdown"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "red"}}}
+    },
+    {
+      "title": "Signal Entry / TP / SL",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "targets": [
+        {"expr": "signal_entry_price", "refId": "A", "legendFormat": "Entry"},
+        {"expr": "signal_take_profit", "refId": "B", "legendFormat": "Take Profit"},
+        {"expr": "signal_stop_loss", "refId": "C", "legendFormat": "Stop Loss"}
+      ]
+    },
+    {
+      "title": "Expected Return & Risk/Reward",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "targets": [
+        {"expr": "signal_expected_return_pct", "refId": "A", "legendFormat": "Expected Return %"},
+        {"expr": "signal_risk_reward_ratio", "refId": "B", "legendFormat": "Risk/Reward"}
+      ]
+    },
+    {
+      "title": "Agent Iteration Duration",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "targets": [
+        {"expr": "rate(agent_iteration_duration_seconds_sum[5m]) / rate(agent_iteration_duration_seconds_count[5m])", "refId": "A", "legendFormat": "Avg Duration"}
+      ]
+    },
+    {
+      "title": "Errors & Iterations",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+      "targets": [
+        {"expr": "agent_iteration_total", "refId": "A", "legendFormat": "Iterations"},
+        {"expr": "error_total", "refId": "B", "legendFormat": "Errors"}
+      ]
+    },
+    {
+      "title": "Active Models",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 30},
+      "targets": [{"expr": "model_count", "refId": "A"}]
+    },
+    {
+      "title": "Risk Headroom",
+      "type": "gauge",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 30},
+      "targets": [{"expr": "risk_headroom", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.02},
+              {"color": "green", "value": 0.04}
+            ]
+          },
+          "min": 0, "max": 0.1
+        }
+      }
+    },
+    {
+      "title": "Equity",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 30},
+      "targets": [{"expr": "equity_usd", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["btc-alpha", "trading", "agent"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "BTC Alpha Agent Dashboard",
+  "uid": "btc-alpha-agent",
+  "version": 1
+}

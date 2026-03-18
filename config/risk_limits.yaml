@@ -1,0 +1,23 @@
+# risk_limits.yaml
+daily_loss_limit_pct: 0.05        # 5% of opening equity
+eod_trailing_loss_limit_pct: 0.05 # 5% from EOD high water mark
+trading_day_reset_utc: "00:00"
+
+flatten_on_breach: true
+auto_reset_next_day: false  # require operator intervention by default
+
+max_position_pct: 0.25       # max 25% of equity in single position
+max_gross_exposure_pct: 1.0  # max 100% gross exposure
+max_leverage: 3.0
+
+vol_target_annualized: 0.30  # 30% annual vol target
+min_headroom_pct: 0.02       # don't trade if less than 2% headroom to breach
+
+equity_check_interval_seconds: 60  # check equity every minute in live
+intraday_check_on_fill: true       # also check on every fill
+
+kill_switch:
+  max_orders_per_hour: 20
+  max_fills_per_hour: 10
+  max_consecutive_losses: 5
+  cooldown_minutes: 30
