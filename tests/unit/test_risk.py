@@ -1,7 +1,5 @@
 """Tests for risk rules: daily loss, EOD trailing, kill switch, sizing."""
 
-from unittest.mock import patch
-
 
 class TestDailyLossRule:
     def test_breach_when_equity_drops_5pct(self):
