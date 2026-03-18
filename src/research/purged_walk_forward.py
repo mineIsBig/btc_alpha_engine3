@@ -33,38 +33,98 @@ class WalkForwardFold:
 
 
 class PurgedWalkForward:
-    """Purged walk-forward splitter."""
+    """Purged walk-forward splitter with dynamic purge gaps.
+    
+    Purge gap is dynamically adjusted based on prediction horizon to prevent
+    information leakage. Longer horizons require larger purge gaps.
+    """
 
     def __init__(
         self,
         train_days: int = 90,
         test_days: int = 14,
-        purge_hours: int = 48,
+        purge_hours: int | None = None,
         embargo_hours: int = 24,
         step_days: int = 14,
         min_train_samples: int = 1000,
         max_folds: int = 50,
+        horizon: int | None = None,
+        purge_horizon_multiplier: float = 2.0,
+        min_purge_hours: int = 48,
     ):
+        """Initialize purged walk-forward splitter.
+        
+        Args:
+            train_days: Training window size in days
+            test_days: Test window size in days
+            purge_hours: Fixed purge gap in hours (overrides dynamic if set)
+            embargo_hours: Gap after test before next train starts
+            step_days: How many days to step forward each fold
+            min_train_samples: Minimum samples required in training set
+            max_folds: Maximum number of folds to generate
+            horizon: Prediction horizon in hours (for dynamic purge calculation)
+            purge_horizon_multiplier: Multiplier for horizon to compute purge gap
+            min_purge_hours: Minimum purge gap regardless of horizon
+        """
         self.train_days = train_days
         self.test_days = test_days
-        self.purge_hours = purge_hours
         self.embargo_hours = embargo_hours
         self.step_days = step_days
         self.min_train_samples = min_train_samples
         self.max_folds = max_folds
+        self.horizon = horizon
+        self.purge_horizon_multiplier = purge_horizon_multiplier
+        self.min_purge_hours = min_purge_hours
+        
+        # Compute effective purge hours
+        if purge_hours is not None:
+            self.purge_hours = purge_hours
+        elif horizon is not None:
+            self.purge_hours = max(min_purge_hours, int(horizon * purge_horizon_multiplier))
+        else:
+            self.purge_hours = min_purge_hours
 
     @classmethod
-    def from_config(cls) -> PurgedWalkForward:
-        """Create from walk_forward.yaml config."""
+    def from_config(cls, horizon: int | None = None) -> PurgedWalkForward:
+        """Create from walk_forward.yaml config.
+        
+        Args:
+            horizon: Optional prediction horizon for dynamic purge calculation
+        """
         cfg = load_yaml_config("walk_forward.yaml")["walk_forward"]
         return cls(
             train_days=cfg["train_days"],
             test_days=cfg["test_days"],
-            purge_hours=cfg["purge_hours"],
+            purge_hours=cfg.get("purge_hours"),  # None for dynamic
             embargo_hours=cfg["embargo_hours"],
             step_days=cfg["step_days"],
             min_train_samples=cfg["min_train_samples"],
             max_folds=cfg["max_folds"],
+            horizon=horizon,
+            purge_horizon_multiplier=cfg.get("purge_horizon_multiplier", 2.0),
+            min_purge_hours=cfg.get("min_purge_hours", 48),
+        )
+    
+    def with_horizon(self, horizon: int) -> PurgedWalkForward:
+        """Return a new splitter configured for a specific horizon.
+        
+        Args:
+            horizon: Prediction horizon in hours
+            
+        Returns:
+            New PurgedWalkForward instance with horizon-appropriate purge gap
+        """
+        return PurgedWalkForward(
+            train_days=self.train_days,
+            test_days=self.test_days,
+            purge_hours=None,  # Will be computed dynamically
+            embargo_hours=self.embargo_hours,
+            step_days=self.step_days,
+            min_train_samples=self.min_train_samples,
+            max_folds=self.max_folds,
+            horizon=horizon,
+            purge_horizon_multiplier=self.purge_horizon_multiplier,
+            min_purge_hours=self.min_purge_hours,
         )
 
     def split(self, timestamps: pd.Series | np.ndarray) -> Generator[WalkForwardFold, None, None]:
