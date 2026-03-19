@@ -17,7 +17,7 @@
 
 This is an **autonomous BTC trading research system** that:
 
-1. Pulls derivatives data from CoinGlass (funding rates, open interest, liquidations, leverage ratios, taker flow)
+1. Pulls derivatives data from Coinalyze (funding rates, open interest, liquidations, leverage ratios, taker flow)
 2. Computes ~80 quantitative features from that data
 3. Trains multiple ML models across 5 time horizons (1h, 4h, 8h, 12h, 24h)
 4. Uses an AI agent (powered by Chutes.ai LLMs) that continuously analyzes its own performance, identifies weaknesses, and proposes improvements
@@ -32,11 +32,11 @@ This is an **autonomous BTC trading research system** that:
 ### The Data Flow
 
 ```
-CoinGlass API → Raw Data (DB) → Feature Pipeline (80+ features) → Models → Ensemble → Signal
+Coinalyze API → Raw Data (DB) → Feature Pipeline (80+ features) → Models → Ensemble → Signal
 ```
 
 **Step 1: Data Ingestion** (`src/data/`)
-- `coinglass_client.py` calls the CoinGlass v3 API for:
+- `coinglass_client.py` calls the Coinalyze v3 API for:
   - Funding rate OHLC (how much longs pay shorts, or vice versa)
   - Open interest OHLC (total outstanding contracts)
   - Liquidation history (forced closures of positions)
@@ -166,13 +166,13 @@ Two hard rules enforced in **both backtests and live operation**:
 
 You need:
 - **Python 3.11+**
-- **A CoinGlass API key** — sign up at [coinglass.com](https://www.coinglass.com/) and get a v3 API key
+- **A Coinalyze API key** (optional) — sign up at [coinalyze.net](https://coinalyze.net/) for derivatives data. Alternatively, use `scripts/download_historical_data.py` to get data from Binance public APIs (no key needed)
 - **A Chutes.ai API key** — sign up at [chutes.ai](https://chutes.ai/) for agent LLM reasoning
 - **Docker + Docker Compose** (optional, for Prometheus + Grafana monitoring)
 - **Lium CLI** (optional, for GPU training): `pip install lium.io && lium init`
 - **Targon API key** (optional, fallback inference): get from [targon.com](https://targon.com/)
 
-**Minimum to get started**: CoinGlass key + Chutes.ai key. Everything else is optional.
+**Minimum to get started**: Chutes.ai key (for agent reasoning). Historical data can be downloaded from Binance public APIs (no key needed). Everything else is optional.
 
 ---
 
@@ -228,17 +228,27 @@ python scripts/bootstrap_db.py
 
 This creates all 19 tables (instruments, price bars, funding, OI, liquidations, long/short, taker flow, feature store, labels, regimes, model registry, walk-forward runs, account snapshots, day state, signals, orders, fills, positions) and seeds the BTC instrument.
 
-### Step 4: Backfill historical data
+### Step 4: Download historical data
+
+**Option A: Download from Binance (no API key needed, recommended)**
 
 ```bash
-# Backfill from Jan 2024 to now (adjust dates as needed)
-python scripts/backfill_coinglass.py --symbol BTC --start 2024-01-01
+# Download 2 years of 1h data from Binance public APIs
+python scripts/download_historical_data.py --days 730
 
-# For a quick test with less data
-python scripts/backfill_coinglass.py --symbol BTC --start 2024-10-01
+# Prepare for the feature pipeline (rename columns to expected format)
+python scripts/load_csv_data.py
 ```
 
-This pulls hourly data from CoinGlass and stores it in your database. Depending on the date range and your API plan rate limits, this takes 5-30 minutes.
+This downloads price OHLCV, funding rates, open interest, long/short ratios, and taker volume. No API keys needed. Takes ~10-15 minutes.
+
+**Option B: Backfill via Coinalyze API (requires free API key)**
+
+```bash
+python scripts/backfill_coinglass.py --symbol BTC --start 2024-01-01
+```
+
+Note: Coinalyze keeps only ~60-80 days of hourly data.
 
 ### Step 5: Train initial models
 
@@ -311,7 +321,7 @@ python scripts/run_agent.py --delay 1800 --equity 50000
 
 ### What happens without API keys
 
-- **No CoinGlass key**: Backfill fails, but you can still test with synthetic data (the test fixtures create synthetic datasets)
+- **No Coinalyze key**: Use `python scripts/download_historical_data.py` to get data from Binance (no key needed). Or test with synthetic data (test fixtures create synthetic datasets)
 - **No Chutes.ai key**: Agent's design/reflect/improve phases fall back to default behavior (no LLM reasoning, but the run/measure/signal phases still work)
 - **No Targon key**: No fallback inference (Chutes is primary)
 - **No Lium**: GPU training dispatching is skipped; all training runs locally
@@ -383,7 +393,7 @@ The auto-provisioned dashboard shows:
 | File | Purpose |
 |---|---|
 | `assets.yaml` | Defines BTC instrument with tick size, lot size, max position |
-| `data_sources.yaml` | CoinGlass and Hyperliquid API endpoints and settings |
+| `data_sources.yaml` | Coinalyze and Hyperliquid API endpoints and settings |
 | `model_registry.yaml` | Model types, hyperparameter search spaces, promotion criteria |
 | `risk_limits.yaml` | 5% daily loss, 5% EOD trailing, kill switch thresholds, vol target |
 | `walk_forward.yaml` | 90-day train, 14-day test, 48h purge, cost assumptions |
@@ -394,7 +404,7 @@ The auto-provisioned dashboard shows:
 ### Data (`src/data/`)
 | File | Purpose |
 |---|---|
-| `coinglass_client.py` | CoinGlass v3 API: funding, OI, liquidations, long/short, taker flow |
+| `coinglass_client.py` | Coinalyze v3 API: funding, OI, liquidations, long/short, taker flow |
 | `hyperliquid_client.py` | Hyperliquid info API for price data (public, no auth) |
 | `ingest_jobs.py` | Backfill + incremental refresh for all data types |
 | `validators.py` | Schema validation, null checks, high/low fixing, gap detection |
